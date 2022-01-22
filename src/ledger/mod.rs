@@ -1,6 +1,8 @@
 //!
-//! # World state
+//! # Ledger, world state
 //!
+
+pub(crate) mod staking;
 
 use crate::{ethvm, tx::Tx};
 use primitive_types::H160;
@@ -40,6 +42,7 @@ pub(crate) struct State {
     pub(crate) blocks: MapxOrd<BlockHeight, Block>,
 
     pub(crate) evm: ethvm::State,
+    pub(crate) staking: staking::State,
 }
 
 pub(crate) struct Block {

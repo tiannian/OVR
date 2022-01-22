@@ -1,3 +1,11 @@
+//!
+//! # Functiosn of native transactions
+//!
+//! eg:
+//! - Staking
+//! - System management
+//!
+
 use crate::ledger::StateBranch;
 use ruc::*;
 use serde::{Deserialize, Serialize};
@@ -8,7 +16,7 @@ pub struct Tx {
 }
 
 impl Tx {
-    pub(crate) fn apply(self, sb: &mut StateBranch) -> Result<()> {
+    pub(crate) fn apply(self, _sb: &mut StateBranch) -> Result<()> {
         todo!()
     }
 }
