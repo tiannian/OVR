@@ -1,3 +1,4 @@
+mod common;
 mod consensus;
 mod ethvm;
 pub mod ledger;

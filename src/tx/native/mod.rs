@@ -9,6 +9,7 @@
 use crate::ledger::StateBranch;
 use ruc::*;
 use serde::{Deserialize, Serialize};
+use vsdb::BranchName;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Tx {
@@ -16,7 +17,7 @@ pub struct Tx {
 }
 
 impl Tx {
-    pub(crate) fn apply(self, _sb: &mut StateBranch) -> Result<()> {
+    pub(crate) fn apply(self, _sb: &mut StateBranch, _b: BranchName) -> Result<()> {
         todo!()
     }
 }

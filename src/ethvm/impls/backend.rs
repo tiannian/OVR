@@ -8,25 +8,31 @@ use crate::ethvm::{OvrAccount, OvrVicinity};
 use evm::backend::{Apply, ApplyBackend, Backend, Basic, Log};
 use primitive_types::{H160, H256, U256};
 use serde::{Deserialize, Serialize};
-use vsdb::{Mapx, MapxVs, Vecx};
+use std::collections::BTreeMap;
+use vsdb::{BranchName, Mapx, MapxVs, Vecx};
 
 // Ovr backend, storing all state values in vsdb.
 #[derive(Clone, Debug)]
 pub(crate) struct OvrBackend<'vicinity> {
+    pub(crate) branch: BranchName<'vicinity>,
     pub(crate) state: MapxVs<H160, OvrAccount>,
     pub(crate) vicinity: &'vicinity OvrVicinity,
 }
 
 impl<'vicinity> OvrBackend<'vicinity> {
-    // Create a new vsdb backend.
     pub(crate) fn new(
-        vicinity: &'vicinity OvrVicinity,
         state: MapxVs<H160, OvrAccount>,
+        vicinity: &'vicinity OvrVicinity,
+        branch: BranchName<'vicinity>,
     ) -> Self {
-        Self { vicinity, state }
+        Self {
+            state,
+            vicinity,
+            branch,
+        }
     }
 
-    // Get the underlying `MapxVs` storing the state.
+    #[inline(always)]
     pub(crate) fn state(&self) -> &MapxVs<H160, OvrAccount> {
         &self.state
     }
@@ -74,12 +80,12 @@ impl<'vicinity> Backend for OvrBackend<'vicinity> {
     }
 
     fn exists(&self, address: H160) -> bool {
-        self.state.contains_key(&address)
+        self.state.contains_key_by_branch(&address, self.branch)
     }
 
     fn basic(&self, address: H160) -> Basic {
         self.state
-            .get(&address)
+            .get_by_branch(&address, self.branch)
             .map(|a| Basic {
                 balance: a.balance,
                 nonce: a.nonce,
@@ -89,14 +95,14 @@ impl<'vicinity> Backend for OvrBackend<'vicinity> {
 
     fn code(&self, address: H160) -> Vec<u8> {
         self.state
-            .get(&address)
+            .get_by_branch(&address, self.branch)
             .map(|v| v.code.clone())
             .unwrap_or_default()
     }
 
     fn storage(&self, address: H160, index: H256) -> H256 {
         self.state
-            .get(&address)
+            .get_by_branch(&address, self.branch)
             .map(|v| v.storage.get(&index).map(|v| v.clone()).unwrap_or_default())
             .unwrap_or_default()
     }
@@ -125,8 +131,8 @@ impl<'vicinity> ApplyBackend for OvrBackend<'vicinity> {
                     let is_empty = {
                         let mut account = self
                             .state
-                            .entry_ref(&address)
-                            .or_insert_ref(&Default::default());
+                            .get_by_branch(&address, self.branch)
+                            .unwrap_or_default();
                         account.balance = basic.balance;
                         account.nonce = basic.nonce;
                         if let Some(code) = code {
@@ -134,39 +140,46 @@ impl<'vicinity> ApplyBackend for OvrBackend<'vicinity> {
                         }
 
                         if reset_storage {
-                            account.storage.clear();
+                            account.storage = BTreeMap::new();
                         }
 
                         let zeros = account
                             .storage
                             .iter()
-                            .filter(|(_, v)| v == &H256::default())
+                            .filter(|(_, v)| v == &&H256::default())
                             .map(|(k, _)| k)
+                            .cloned()
                             .collect::<Vec<H256>>();
 
                         for zero in zeros {
-                            account.storage.remove(&zero).unwrap();
+                            account.storage.remove(&zero);
                         }
 
                         for (index, value) in storage {
                             if value == H256::default() {
-                                account.storage.remove(&index).unwrap();
+                                account.storage.remove(&index);
                             } else {
-                                account.storage.insert(index, value).unwrap();
+                                account.storage.insert(index, value);
                             }
                         }
 
-                        account.balance == U256::zero()
+                        let ret = account.balance == U256::zero()
                             && account.nonce == U256::zero()
-                            && account.code.is_empty()
+                            && account.code.is_empty();
+
+                        self.state
+                            .insert_by_branch(address, account, self.branch)
+                            .unwrap();
+
+                        ret
                     };
 
                     if is_empty && delete_empty {
-                        self.state.remove(&address).unwrap();
+                        self.state.remove_by_branch(&address, self.branch).unwrap();
                     }
                 }
                 Apply::Delete { address } => {
-                    self.state.remove(&address).unwrap();
+                    self.state.remove_by_branch(&address, self.branch).unwrap();
                 }
             }
         }
