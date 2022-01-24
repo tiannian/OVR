@@ -4,83 +4,94 @@
 //! Ported from [evm](evm::executor::stack::memory).
 //!
 
-use crate::ethvm::{OvrAccount, OvrVicinity};
+use crate::{
+    common::BlockHeight,
+    ethvm::{OvrAccount, OvrVicinity},
+};
 use evm::backend::{Apply, ApplyBackend, Backend, Basic, Log};
 use primitive_types::{H160, H256, U256};
-use vsdb::{BranchName, MapxVs};
+use vsdb::{BranchName, MapxOrd, MapxVs};
 
 // Ovr backend, storing all state values in vsdb.
 #[derive(Clone, Debug)]
-pub(crate) struct OvrBackend<'vicinity> {
-    pub(crate) branch: BranchName<'vicinity>,
+pub(crate) struct OvrBackend<'a> {
+    pub(crate) branch: BranchName<'a>,
     pub(crate) state: MapxVs<H160, OvrAccount>,
-    pub(crate) vicinity: &'vicinity OvrVicinity,
+    pub(crate) storages: MapxVs<(H160, H256), H256>,
+    pub(crate) block_hashes: MapxOrd<BlockHeight, H256>,
+    pub(crate) vicinity: OvrVicinity,
 }
 
-impl<'vicinity> OvrBackend<'vicinity> {
-    pub(crate) fn new(
-        state: MapxVs<H160, OvrAccount>,
-        vicinity: &'vicinity OvrVicinity,
-        branch: BranchName<'vicinity>,
-    ) -> Self {
-        Self {
-            state,
-            vicinity,
-            branch,
-        }
+impl<'a> OvrBackend<'a> {
+    // TODO: optimize performance
+    #[inline(always)]
+    fn reset_storage(&self, target: H160, b: BranchName) {
+        self.storages
+            .iter_by_branch(b)
+            .filter(|((addr, _), _)| addr == &target)
+            .for_each(|(k, _)| {
+                self.storages.remove_by_branch(&k, b).unwrap();
+            });
     }
-
-    // #[inline(always)]
-    // pub(crate) fn state(&self) -> &MapxVs<H160, OvrAccount> {
-    //     &self.state
-    // }
-
-    // // Get a mutable reference to the underlying `MapxVs` storing the state.
-    // pub(crate) fn state_mut(&mut self) -> &mut MapxVs<H160, OvrAccount> {
-    //     &mut self.state
-    // }
 }
 
-impl<'vicinity> Backend for OvrBackend<'vicinity> {
+impl<'a> Backend for OvrBackend<'a> {
+    #[inline(always)]
     fn gas_price(&self) -> U256 {
         self.vicinity.gas_price
     }
+
+    #[inline(always)]
     fn origin(&self) -> H160 {
         self.vicinity.origin
     }
+
+    #[inline(always)]
     fn block_hash(&self, number: U256) -> H256 {
-        self.vicinity
-            .block_hashes
-            .get(&number.as_u64())
-            .unwrap_or_default()
+        self.block_hashes.get(&number.as_u64()).unwrap_or_default()
     }
+
+    #[inline(always)]
     fn block_number(&self) -> U256 {
         self.vicinity.block_number
     }
+
+    #[inline(always)]
     fn block_coinbase(&self) -> H160 {
         self.vicinity.block_coinbase
     }
+
+    #[inline(always)]
     fn block_timestamp(&self) -> U256 {
         self.vicinity.block_timestamp
     }
+
+    #[inline(always)]
     fn block_difficulty(&self) -> U256 {
         self.vicinity.block_difficulty
     }
+
+    #[inline(always)]
     fn block_gas_limit(&self) -> U256 {
         self.vicinity.block_gas_limit
     }
+
+    #[inline(always)]
     fn block_base_fee_per_gas(&self) -> U256 {
         self.vicinity.block_base_fee_per_gas
     }
 
+    #[inline(always)]
     fn chain_id(&self) -> U256 {
         self.vicinity.chain_id
     }
 
+    #[inline(always)]
     fn exists(&self, address: H160) -> bool {
         self.state.contains_key_by_branch(&address, self.branch)
     }
 
+    #[inline(always)]
     fn basic(&self, address: H160) -> Basic {
         self.state
             .get_by_branch(&address, self.branch)
@@ -91,6 +102,7 @@ impl<'vicinity> Backend for OvrBackend<'vicinity> {
             .unwrap_or_default()
     }
 
+    #[inline(always)]
     fn code(&self, address: H160) -> Vec<u8> {
         self.state
             .get_by_branch(&address, self.branch)
@@ -98,19 +110,20 @@ impl<'vicinity> Backend for OvrBackend<'vicinity> {
             .unwrap_or_default()
     }
 
+    #[inline(always)]
     fn storage(&self, address: H160, index: H256) -> H256 {
-        self.state
-            .get_by_branch(&address, self.branch)
-            .map(|v| v.storage.get(&index).unwrap_or_default())
+        self.storages
+            .get_by_branch(&(address, index), self.branch)
             .unwrap_or_default()
     }
 
+    #[inline(always)]
     fn original_storage(&self, address: H160, index: H256) -> Option<H256> {
         Some(self.storage(address, index))
     }
 }
 
-impl<'vicinity> ApplyBackend for OvrBackend<'vicinity> {
+impl<'a> ApplyBackend for OvrBackend<'a> {
     fn apply<A, I, L>(&mut self, values: A, logs: L, delete_empty: bool)
     where
         A: IntoIterator<Item = Apply<I>>,
@@ -138,25 +151,12 @@ impl<'vicinity> ApplyBackend for OvrBackend<'vicinity> {
                         }
 
                         if reset_storage {
-                            account.storage.clear();
-                        }
-
-                        let zeros = account
-                            .storage
-                            .iter()
-                            .filter(|(_, v)| v == &H256::default())
-                            .map(|(k, _)| k)
-                            .collect::<Vec<H256>>();
-
-                        for zero in zeros {
-                            account.storage.remove(&zero);
+                            self.reset_storage(address, self.branch);
                         }
 
                         for (index, value) in storage {
-                            if value == H256::default() {
-                                account.storage.remove(&index);
-                            } else {
-                                account.storage.insert(index, value);
+                            if value != H256::default() {
+                                self.storages.insert((address, index), value).unwrap();
                             }
                         }
 

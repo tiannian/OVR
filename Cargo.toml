@@ -21,10 +21,9 @@ tokio = { version =  "1.15.0", features = ["full"] }
 
 rlp = "0.5.1"
 sha3 = "0.10.0"
-evm = { version = "0.33.1", default-features = false, features = ["with-serde"] }
-ethereum = { version =  "0.11.1", default-features = false, features = ["with-serde"] }
-primitive-types = { version = "0.10.1", default-features = false, features = ["rlp", "byteorder", "serde"] }
 slices = "0.2.0"
+sp-io = "4.0.0"
+num_enum = "0.5.6"
 
 jsonrpc-http-server = "18.0"
 jsonrpc-ws-server = "18.0"
@@ -33,7 +32,21 @@ jsonrpc-core-client = "18.0"
 jsonrpc-core = "18.0"
 jsonrpc-derive = "18.0"
 
-sp-io = "4.0.0"
+evm = { version = "0.33.1", default-features = false, features = ["with-serde"] }
+ethereum = { version =  "0.11.1", default-features = false, features = ["with-serde"] }
+primitive-types = { version = "0.10.1", default-features = false, features = ["rlp", "byteorder", "serde"] }
+
+fevm = { package = "pallet-evm", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
+fevm-precompile-blake2 = { package = "pallet-evm-precompile-blake2", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
+fevm-precompile-bn128 = { package = "pallet-evm-precompile-bn128", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
+fevm-precompile-curve25519 = { package = "pallet-evm-precompile-curve25519", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
+fevm-precompile-dispatch = { package = "pallet-evm-precompile-dispatch", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
+fevm-precompile-ed25519 = { package = "pallet-evm-precompile-ed25519", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
+fevm-precompile-modexp = { package = "pallet-evm-precompile-modexp", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
+fevm-precompile-sha3fips = { package = "pallet-evm-precompile-sha3fips", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
+fevm-precompile-simple = { package = "pallet-evm-precompile-simple", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
+
+precompile-utils = { git = "https://github.com/ccmlm/precompile_utils.git" }
 
 [dev-dependencies]
 criterion = { version = "0.3", features = ["html_reports"]}

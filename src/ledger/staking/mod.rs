@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use vsdb::Vs;
 
-#[derive(Vs, Deserialize, Serialize)]
+#[derive(Vs, Default, Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct State {
     // TODO
 }

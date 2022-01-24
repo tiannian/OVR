@@ -33,6 +33,7 @@ pub(crate) struct OvrStackSubstate<'config> {
 }
 
 impl<'config> OvrStackSubstate<'config> {
+    #[inline(always)]
     pub(crate) fn new(metadata: StackSubstateMetadata<'config>) -> Self {
         Self {
             metadata,
@@ -52,10 +53,12 @@ impl<'config> OvrStackSubstate<'config> {
     //     &mut self.logs
     // }
 
+    #[inline(always)]
     pub(crate) fn metadata(&self) -> &StackSubstateMetadata<'config> {
         &self.metadata
     }
 
+    #[inline(always)]
     pub(crate) fn metadata_mut(&mut self) -> &mut StackSubstateMetadata<'config> {
         &mut self.metadata
     }
@@ -116,6 +119,7 @@ impl<'config> OvrStackSubstate<'config> {
         (applies, self.logs)
     }
 
+    #[inline(always)]
     pub(crate) fn enter(&mut self, gas_limit: u64, is_static: bool) {
         let mut entering = Self {
             metadata: self.metadata.spit_child(gas_limit, is_static),
@@ -160,18 +164,21 @@ impl<'config> OvrStackSubstate<'config> {
         Ok(())
     }
 
+    #[inline(always)]
     pub(crate) fn exit_revert(&mut self) -> Result<(), ExitError> {
         let mut exited = *self.parent.take().expect("Cannot discard on root substate");
         mem::swap(&mut exited, self);
         self.metadata.swallow_revert(exited.metadata)
     }
 
+    #[inline(always)]
     pub(crate) fn exit_discard(&mut self) -> Result<(), ExitError> {
         let mut exited = *self.parent.take().expect("Cannot discard on root substate");
         mem::swap(&mut exited, self);
         self.metadata.swallow_discard(exited.metadata)
     }
 
+    #[inline(always)]
     pub(crate) fn known_account(&self, address: H160) -> Option<&OvrStackAccount> {
         if let Some(account) = self.accounts.get(&address) {
             Some(account)
@@ -182,14 +189,17 @@ impl<'config> OvrStackSubstate<'config> {
         }
     }
 
+    #[inline(always)]
     pub(crate) fn known_basic(&self, address: H160) -> Option<Basic> {
         self.known_account(address).map(|acc| acc.basic.clone())
     }
 
+    #[inline(always)]
     pub(crate) fn known_code(&self, address: H160) -> Option<Vec<u8>> {
         self.known_account(address).and_then(|acc| acc.code.clone())
     }
 
+    #[inline(always)]
     pub(crate) fn known_empty(&self, address: H160) -> Option<bool> {
         if let Some(account) = self.known_account(address) {
             if account.basic.balance != U256::zero() {
@@ -209,6 +219,7 @@ impl<'config> OvrStackSubstate<'config> {
         None
     }
 
+    #[inline(always)]
     pub(crate) fn known_storage(&self, address: H160, key: H256) -> Option<H256> {
         if let Some(value) = self.storages.get(&(address, key)) {
             return Some(*value);
@@ -224,6 +235,7 @@ impl<'config> OvrStackSubstate<'config> {
         None
     }
 
+    #[inline(always)]
     pub(crate) fn known_original_storage(
         &self,
         address: H160,
@@ -240,16 +252,19 @@ impl<'config> OvrStackSubstate<'config> {
         None
     }
 
+    #[inline(always)]
     pub(crate) fn is_cold(&self, address: H160) -> bool {
         self.recursive_is_cold(&|a| a.accessed_addresses.contains(&address))
     }
 
+    #[inline(always)]
     pub(crate) fn is_storage_cold(&self, address: H160, key: H256) -> bool {
         self.recursive_is_cold(&|a: &Accessed| {
             a.accessed_storage.contains(&(address, key))
         })
     }
 
+    #[inline(always)]
     fn recursive_is_cold<F: Fn(&Accessed) -> bool>(&self, f: &F) -> bool {
         let local_is_accessed =
             self.metadata.accessed().as_ref().map(f).unwrap_or(false);
@@ -263,6 +278,7 @@ impl<'config> OvrStackSubstate<'config> {
         }
     }
 
+    #[inline(always)]
     pub(crate) fn deleted(&self, address: H160) -> bool {
         if self.deletes.contains(&address) {
             return true;
@@ -292,14 +308,17 @@ impl<'config> OvrStackSubstate<'config> {
         })
     }
 
+    #[inline(always)]
     pub(crate) fn inc_nonce<B: Backend>(&mut self, address: H160, backend: &B) {
         self.account_mut(address, backend).basic.nonce += U256::one();
     }
 
+    #[inline(always)]
     pub(crate) fn set_storage(&mut self, address: H160, key: H256, value: H256) {
         self.storages.insert((address, key), value);
     }
 
+    #[inline(always)]
     pub(crate) fn reset_storage<B: Backend>(&mut self, address: H160, backend: &B) {
         self.storages
             .keys()
@@ -316,6 +335,7 @@ impl<'config> OvrStackSubstate<'config> {
         self.account_mut(address, backend).reset = true;
     }
 
+    #[inline(always)]
     pub(crate) fn log(&mut self, address: H160, topics: Vec<H256>, data: Vec<u8>) {
         self.logs.push(Log {
             address,
@@ -324,10 +344,12 @@ impl<'config> OvrStackSubstate<'config> {
         });
     }
 
+    #[inline(always)]
     pub(crate) fn set_deleted(&mut self, address: H160) {
         self.deletes.insert(address);
     }
 
+    #[inline(always)]
     pub(crate) fn set_code<B: Backend>(
         &mut self,
         address: H160,
@@ -380,10 +402,12 @@ impl<'config> OvrStackSubstate<'config> {
     //     target.basic.balance = target.basic.balance.saturating_add(value);
     // }
 
+    #[inline(always)]
     pub(crate) fn reset_balance<B: Backend>(&mut self, address: H160, backend: &B) {
         self.account_mut(address, backend).basic.balance = U256::zero();
     }
 
+    #[inline(always)]
     pub(crate) fn touch<B: Backend>(&mut self, address: H160, backend: &B) {
         self.account_mut(address, backend);
     }
@@ -396,60 +420,83 @@ pub(crate) struct OvrStackState<'backend, 'config, B> {
 }
 
 impl<'backend, 'config, B: Backend> Backend for OvrStackState<'backend, 'config, B> {
+    #[inline(always)]
     fn gas_price(&self) -> U256 {
         self.backend.gas_price()
     }
+
+    #[inline(always)]
     fn origin(&self) -> H160 {
         self.backend.origin()
     }
+
+    #[inline(always)]
     fn block_hash(&self, number: U256) -> H256 {
         self.backend.block_hash(number)
     }
+
+    #[inline(always)]
     fn block_number(&self) -> U256 {
         self.backend.block_number()
     }
+
+    #[inline(always)]
     fn block_coinbase(&self) -> H160 {
         self.backend.block_coinbase()
     }
+
+    #[inline(always)]
     fn block_timestamp(&self) -> U256 {
         self.backend.block_timestamp()
     }
+
+    #[inline(always)]
     fn block_difficulty(&self) -> U256 {
         self.backend.block_difficulty()
     }
+
+    #[inline(always)]
     fn block_gas_limit(&self) -> U256 {
         self.backend.block_gas_limit()
     }
+
+    #[inline(always)]
     fn block_base_fee_per_gas(&self) -> U256 {
         self.backend.block_base_fee_per_gas()
     }
 
+    #[inline(always)]
     fn chain_id(&self) -> U256 {
         self.backend.chain_id()
     }
 
+    #[inline(always)]
     fn exists(&self, address: H160) -> bool {
         self.substate.known_account(address).is_some() || self.backend.exists(address)
     }
 
+    #[inline(always)]
     fn basic(&self, address: H160) -> Basic {
         self.substate
             .known_basic(address)
             .unwrap_or_else(|| self.backend.basic(address))
     }
 
+    #[inline(always)]
     fn code(&self, address: H160) -> Vec<u8> {
         self.substate
             .known_code(address)
             .unwrap_or_else(|| self.backend.code(address))
     }
 
+    #[inline(always)]
     fn storage(&self, address: H160, key: H256) -> H256 {
         self.substate
             .known_storage(address, key)
             .unwrap_or_else(|| self.backend.storage(address, key))
     }
 
+    #[inline(always)]
     fn original_storage(&self, address: H160, key: H256) -> Option<H256> {
         if let Some(value) = self.substate.known_original_storage(address, key) {
             return Some(value);
@@ -461,30 +508,37 @@ impl<'backend, 'config, B: Backend> Backend for OvrStackState<'backend, 'config,
 impl<'backend, 'config, B: Backend> StackState<'config>
     for OvrStackState<'backend, 'config, B>
 {
+    #[inline(always)]
     fn metadata(&self) -> &StackSubstateMetadata<'config> {
         self.substate.metadata()
     }
 
+    #[inline(always)]
     fn metadata_mut(&mut self) -> &mut StackSubstateMetadata<'config> {
         self.substate.metadata_mut()
     }
 
+    #[inline(always)]
     fn enter(&mut self, gas_limit: u64, is_static: bool) {
         self.substate.enter(gas_limit, is_static)
     }
 
+    #[inline(always)]
     fn exit_commit(&mut self) -> Result<(), ExitError> {
         self.substate.exit_commit()
     }
 
+    #[inline(always)]
     fn exit_revert(&mut self) -> Result<(), ExitError> {
         self.substate.exit_revert()
     }
 
+    #[inline(always)]
     fn exit_discard(&mut self) -> Result<(), ExitError> {
         self.substate.exit_discard()
     }
 
+    #[inline(always)]
     fn is_empty(&self, address: H160) -> bool {
         if let Some(known_empty) = self.substate.known_empty(address) {
             return known_empty;
@@ -494,56 +548,69 @@ impl<'backend, 'config, B: Backend> StackState<'config>
             && self.backend.code(address).len() == 0
     }
 
+    #[inline(always)]
     fn deleted(&self, address: H160) -> bool {
         self.substate.deleted(address)
     }
 
+    #[inline(always)]
     fn is_cold(&self, address: H160) -> bool {
         self.substate.is_cold(address)
     }
 
+    #[inline(always)]
     fn is_storage_cold(&self, address: H160, key: H256) -> bool {
         self.substate.is_storage_cold(address, key)
     }
 
+    #[inline(always)]
     fn inc_nonce(&mut self, address: H160) {
         self.substate.inc_nonce(address, self.backend);
     }
 
+    #[inline(always)]
     fn set_storage(&mut self, address: H160, key: H256, value: H256) {
         self.substate.set_storage(address, key, value)
     }
 
+    #[inline(always)]
     fn reset_storage(&mut self, address: H160) {
         self.substate.reset_storage(address, self.backend);
     }
 
+    #[inline(always)]
     fn log(&mut self, address: H160, topics: Vec<H256>, data: Vec<u8>) {
         self.substate.log(address, topics, data);
     }
 
+    #[inline(always)]
     fn set_deleted(&mut self, address: H160) {
         self.substate.set_deleted(address)
     }
 
+    #[inline(always)]
     fn set_code(&mut self, address: H160, code: Vec<u8>) {
         self.substate.set_code(address, code, self.backend)
     }
 
+    #[inline(always)]
     fn transfer(&mut self, transfer: Transfer) -> Result<(), ExitError> {
         self.substate.transfer(transfer, self.backend)
     }
 
+    #[inline(always)]
     fn reset_balance(&mut self, address: H160) {
         self.substate.reset_balance(address, self.backend)
     }
 
+    #[inline(always)]
     fn touch(&mut self, address: H160) {
         self.substate.touch(address, self.backend)
     }
 }
 
 impl<'backend, 'config, B: Backend> OvrStackState<'backend, 'config, B> {
+    #[inline(always)]
     pub(crate) fn new(
         metadata: StackSubstateMetadata<'config>,
         backend: &'backend B,
@@ -555,6 +622,7 @@ impl<'backend, 'config, B: Backend> OvrStackState<'backend, 'config, B> {
     }
 
     #[must_use]
+    #[inline(always)]
     pub(crate) fn deconstruct(self) -> (Vec<Apply<BTreeMap<H256, H256>>>, Vec<Log>) {
         self.substate.deconstruct(self.backend)
     }

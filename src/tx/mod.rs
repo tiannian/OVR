@@ -4,8 +4,12 @@
 
 pub mod native;
 
-use crate::{common::HashValue, ethvm};
+use crate::{
+    common::{hash_sha3_256, HashValue},
+    ethvm,
+};
 use serde::{Deserialize, Serialize};
+use vsdb::ValueEn;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Tx {
@@ -14,7 +18,8 @@ pub enum Tx {
 }
 
 impl Tx {
+    #[inline(always)]
     pub(crate) fn hash(&self) -> HashValue {
-        todo!()
+        hash_sha3_256(&[&self.encode_value()])
     }
 }
