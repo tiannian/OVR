@@ -24,6 +24,7 @@ sha3 = "0.10.0"
 evm = { version = "0.33.1", default-features = false, features = ["with-serde"] }
 ethereum = { version =  "0.11.1", default-features = false, features = ["with-serde"] }
 primitive-types = { version = "0.10.1", default-features = false, features = ["rlp", "byteorder", "serde"] }
+slices = "0.2.0"
 
 jsonrpc-http-server = "18.0"
 jsonrpc-ws-server = "18.0"

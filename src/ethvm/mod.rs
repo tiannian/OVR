@@ -4,11 +4,13 @@ pub mod tx;
 
 use crate::common::BlockHeight;
 use impls::backend::OvrBackend;
+use precompile::token::Erc20Like;
 use primitive_types::{H160, H256, U256};
 use ruc::*;
 use serde::{Deserialize, Serialize};
-use vsdb::{BranchName, Mapx, MapxOrd, MapxVs, OrphanVs, Vs};
+use vsdb::{BranchName, Mapx, MapxOrd, OrphanVs, Vs};
 
+#[allow(non_snake_case)]
 #[derive(Vs, Deserialize, Serialize)]
 pub(crate) struct State {
     pub(crate) chain_id: U256,
@@ -18,8 +20,8 @@ pub(crate) struct State {
     pub(crate) block_coinbase: H160,
     pub(crate) block_timestamp: U256,
 
-    // accounts data of evm side
-    pub(crate) accounts: MapxVs<H160, OvrAccount>,
+    pub(crate) OVR: Erc20Like,
+    pub(crate) OVRG: Erc20Like,
 
     // `BlockHeight => H256(original block hash)`
     pub(crate) block_hashes: MapxOrd<BlockHeight, H256>,
@@ -31,7 +33,7 @@ pub(crate) struct State {
 impl State {
     #[inline(always)]
     fn get_backend_hdr<'a>(&'a self, branch: BranchName<'a>) -> OvrBackend<'a> {
-        OvrBackend::new(self.accounts.clone(), &self.vicinity, branch)
+        OvrBackend::new(self.OVRG.accounts.clone(), &self.vicinity, branch)
     }
 
     // update with each new block

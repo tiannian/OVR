@@ -35,6 +35,7 @@ impl Tx {
             account.balance -= ret.fee_used;
             sb.state
                 .evm
+                .OVRG
                 .accounts
                 .insert_by_branch(addr, account, b)
                 .unwrap();
@@ -203,6 +204,7 @@ impl Tx {
         let account = sb
             .state
             .evm
+            .OVRG
             .accounts
             .get_by_branch(addr, b)
             .unwrap_or_default();
@@ -229,6 +231,7 @@ impl Tx {
         let system_nonce = sb
             .state
             .evm
+            .OVRG
             .accounts
             .get_by_branch(addr, b)
             .map(|a| a.nonce)
