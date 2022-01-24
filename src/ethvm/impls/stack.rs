@@ -44,13 +44,13 @@ impl<'config> OvrStackSubstate<'config> {
         }
     }
 
-    pub(crate) fn logs(&self) -> &[Log] {
-        &self.logs
-    }
+    // pub(crate) fn logs(&self) -> &[Log] {
+    //     &self.logs
+    // }
 
-    pub(crate) fn logs_mut(&mut self) -> &mut Vec<Log> {
-        &mut self.logs
-    }
+    // pub(crate) fn logs_mut(&mut self) -> &mut Vec<Log> {
+    //     &mut self.logs
+    // }
 
     pub(crate) fn metadata(&self) -> &StackSubstateMetadata<'config> {
         &self.metadata
@@ -354,31 +354,31 @@ impl<'config> OvrStackSubstate<'config> {
         Ok(())
     }
 
-    // Only needed for jsontests.
-    pub(crate) fn withdraw<B: Backend>(
-        &mut self,
-        address: H160,
-        value: U256,
-        backend: &B,
-    ) -> Result<(), ExitError> {
-        let source = self.account_mut(address, backend);
-        if source.basic.balance < value {
-            return Err(ExitError::OutOfFund);
-        }
-        source.basic.balance -= value;
-        Ok(())
-    }
+    // // Only needed for jsontests.
+    // pub(crate) fn withdraw<B: Backend>(
+    //     &mut self,
+    //     address: H160,
+    //     value: U256,
+    //     backend: &B,
+    // ) -> Result<(), ExitError> {
+    //     let source = self.account_mut(address, backend);
+    //     if source.basic.balance < value {
+    //         return Err(ExitError::OutOfFund);
+    //     }
+    //     source.basic.balance -= value;
+    //     Ok(())
+    // }
 
-    // Only needed for jsontests.
-    pub(crate) fn deposit<B: Backend>(
-        &mut self,
-        address: H160,
-        value: U256,
-        backend: &B,
-    ) {
-        let target = self.account_mut(address, backend);
-        target.basic.balance = target.basic.balance.saturating_add(value);
-    }
+    // // Only needed for jsontests.
+    // pub(crate) fn deposit<B: Backend>(
+    //     &mut self,
+    //     address: H160,
+    //     value: U256,
+    //     backend: &B,
+    // ) {
+    //     let target = self.account_mut(address, backend);
+    //     target.basic.balance = target.basic.balance.saturating_add(value);
+    // }
 
     pub(crate) fn reset_balance<B: Backend>(&mut self, address: H160, backend: &B) {
         self.account_mut(address, backend).basic.balance = U256::zero();
@@ -559,15 +559,15 @@ impl<'backend, 'config, B: Backend> OvrStackState<'backend, 'config, B> {
         self.substate.deconstruct(self.backend)
     }
 
-    pub(crate) fn withdraw(
-        &mut self,
-        address: H160,
-        value: U256,
-    ) -> Result<(), ExitError> {
-        self.substate.withdraw(address, value, self.backend)
-    }
+    // pub(crate) fn withdraw(
+    //     &mut self,
+    //     address: H160,
+    //     value: U256,
+    // ) -> Result<(), ExitError> {
+    //     self.substate.withdraw(address, value, self.backend)
+    // }
 
-    pub(crate) fn deposit(&mut self, address: H160, value: U256) {
-        self.substate.deposit(address, value, self.backend)
-    }
+    // pub(crate) fn deposit(&mut self, address: H160, value: U256) {
+    //     self.substate.deposit(address, value, self.backend)
+    // }
 }

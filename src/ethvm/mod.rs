@@ -3,13 +3,11 @@ mod precompile;
 pub mod tx;
 
 use crate::common::BlockHeight;
-use evm::backend::Log;
 use impls::backend::OvrBackend;
 use primitive_types::{H160, H256, U256};
 use ruc::*;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-use vsdb::{BranchName, Mapx, MapxOrd, MapxVs, OrphanVs, Vecx, Vs, VsMgmt};
+use vsdb::{BranchName, Mapx, MapxOrd, MapxVs, OrphanVs, Vs};
 
 #[derive(Vs, Deserialize, Serialize)]
 pub(crate) struct State {
@@ -33,12 +31,7 @@ pub(crate) struct State {
 impl State {
     #[inline(always)]
     fn get_backend_hdr<'a>(&'a self, branch: BranchName<'a>) -> OvrBackend<'a> {
-        OvrBackend {
-            branch,
-            // this is a lightweight copy
-            state: self.accounts.clone(),
-            vicinity: &self.vicinity,
-        }
+        OvrBackend::new(self.accounts.clone(), &self.vicinity, branch)
     }
 
     // update with each new block
@@ -47,14 +40,14 @@ impl State {
         self.vicinity = OvrVicinity {
             gas_price: self.gas_price.get_value(),
             origin: H160::zero(),
-            chain_id: self.chain_id.clone(),
+            chain_id: self.chain_id,
             // this is a lightweight copy
-            block_hashes: self.block_hashes.clone(),
+            block_hashes: self.block_hashes,
             block_number: U256::from(
                 self.block_hashes.last().map(|(h, _)| h).unwrap_or(0),
             ),
-            block_coinbase: self.block_coinbase.clone(),
-            block_timestamp: self.block_timestamp.clone(),
+            block_coinbase: self.block_coinbase,
+            block_timestamp: self.block_timestamp,
             block_difficulty: U256::zero(),
             block_gas_limit: self.block_gas_limit.get_value(),
             block_base_fee_per_gas: self.block_base_fee_per_gas.get_value(),
@@ -70,7 +63,7 @@ pub(crate) struct OvrAccount {
     // Account balance, OVRG token.
     pub(crate) balance: U256,
     // Full account storage used by evm.
-    pub(crate) storage: BTreeMap<H256, H256>,
+    pub(crate) storage: Mapx<H256, H256>,
     // Account code.
     pub(crate) code: Vec<u8>,
 }

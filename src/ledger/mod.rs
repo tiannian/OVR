@@ -15,10 +15,10 @@ use crate::{
 use primitive_types::U256;
 use ruc::*;
 use serde::{Deserialize, Serialize};
-use std::mem::{self, size_of};
+use std::mem;
 use vsdb::{
     merkle::{MerkleTree, MerkleTreeStore},
-    BranchName, MapxOrd, OrphanVs, ValueEn, Vs, VsMgmt,
+    MapxOrd, OrphanVs, ValueEn, Vs, VsMgmt,
 };
 
 pub type Ledger = TmStates;
@@ -53,7 +53,7 @@ impl StateBranch {
             .state
             .blocks
             .last()
-            .map(|(h, b)| (h, b.header_hash.clone()))
+            .map(|(h, b)| (h, b.header_hash))
             .unwrap_or_default();
         self.state.block_in_process = Block::new(1 + h, proposer, timestamp, prev_hash);
 
@@ -82,44 +82,32 @@ impl StateBranch {
         let b = self.branch.clone();
         let b = b.as_slice().into();
 
-        let ver = VsVersion::new(
-            self.state.block_in_process.header.height,
-            1 + self.tx_hashes.len() as u64,
-        );
-        self.state
-            .version_create_by_branch(ver.encode_value().as_ref().into(), b)
-            .c(d!())?;
-
         let tx_hash = tx.hash();
-
         match tx {
-            Tx::Evm(tx) => {
-                if let Err(ret) = tx.apply(self, b) {
-                    pnk!(self.state.version_pop_by_branch(b));
-                    if let Some((addr, gas_used)) = ret {
-                        if let Some(mut a) =
-                            self.state.evm.accounts.get_by_branch(&addr, b)
-                        {
-                            a.balance = a.balance.checked_sub(gas_used).unwrap();
-                            pnk!(self.state.evm.accounts.insert_by_branch(addr, a, b));
-                        }
-                    }
-                    Err(eg!("Transaction failed"))
-                } else {
-                    self.tx_hashes.push(tx_hash);
-                    Ok(())
-                }
+            // evm has its own atomic cache, need NOT tx-level snapshot
+            Tx::Evm(tx) => tx.apply(self, b).map_err(|e| eg!(@e)).map(|_| {
+                self.tx_hashes.push(tx_hash);
+            }),
+            Tx::Native(tx) => {
+                let ver = VsVersion::new(
+                    self.state.block_in_process.header.height,
+                    1 + self.tx_hashes.len() as u64,
+                );
+
+                self.state
+                    .version_create_by_branch(ver.encode_value().as_ref().into(), b)
+                    .c(d!())?;
+
+                tx.apply(self, b)
+                    .c(d!())
+                    .map(|_| {
+                        self.tx_hashes.push(tx_hash);
+                    })
+                    .map_err(|e| {
+                        pnk!(self.state.version_pop_by_branch(b));
+                        e
+                    })
             }
-            Tx::Native(tx) => tx
-                .apply(self, b)
-                .c(d!())
-                .map(|_| {
-                    self.tx_hashes.push(tx_hash);
-                })
-                .map_err(|e| {
-                    pnk!(self.state.version_pop_by_branch(b));
-                    e
-                }),
         }
     }
 

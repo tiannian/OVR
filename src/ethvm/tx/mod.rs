@@ -1,4 +1,4 @@
-use super::{impls::stack::OvrStackState, OvrAccount};
+use super::{impls::stack::OvrStackState, precompile::PRECOMPILE_SET, OvrAccount};
 use crate::ledger::StateBranch;
 use ethereum::{TransactionAction, TransactionAny};
 use evm::{
@@ -11,11 +11,13 @@ use primitive_types::{H160, H256, U256};
 use ruc::*;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
-use std::{collections::BTreeMap, result::Result as StdResult};
+use std::result::Result as StdResult;
 use vsdb::BranchName;
 
-static EVM_CFG: Lazy<EvmCfg> = Lazy::new(|| EvmCfg::istanbul());
+static EVM_CFG: Lazy<EvmCfg> = Lazy::new(EvmCfg::istanbul);
 static GAS_PRICE_MIN: Lazy<U256> = Lazy::new(|| U256::from(10u8));
+
+type NeededAmount = U256;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Tx {
@@ -27,22 +29,22 @@ impl Tx {
         self,
         sb: &mut StateBranch,
         b: BranchName,
-    ) -> StdResult<(), Option<(H160, U256)>> {
-        if let Ok((addr, mut a, gas_limit, gas_price)) = ruc::info!(self.pre_exec(sb, b))
-        {
-            match self.exec(addr, sb, b) {
-                Ok(gas_used) => {
-                    a.balance += gas_price.saturating_mul(gas_limit - gas_used);
-                    sb.state.evm.accounts.insert_by_branch(addr, a, b).unwrap();
-                    Ok(())
-                }
-                Err(gas_used) => Err(Some((addr, gas_price.saturating_mul(gas_used)))),
-            }
+    ) -> StdResult<ExecRet, Option<ExecRet>> {
+        if let Ok((addr, mut account)) = info!(self.pre_exec(sb, b)) {
+            let ret = self.exec(addr, sb, b);
+            account.balance -= ret.fee_used;
+            sb.state
+                .evm
+                .accounts
+                .insert_by_branch(addr, account, b)
+                .unwrap();
+            alt!(ret.success, Ok(ret), Err(Some(ret)))
         } else {
             Err(None)
         }
     }
 
+    // 0. ensure the given gas price is big enough
     // 1. verify the transaction signature
     // 2. ensure the transaction nonce is bigger than the last nonce
     // 3. ensure the balance of OVRG is bigger than `spent_amount + gas_limit`
@@ -51,7 +53,8 @@ impl Tx {
         &self,
         sb: &mut StateBranch,
         b: BranchName,
-    ) -> Result<(H160, OvrAccount, U256, U256)> {
+    ) -> Result<(H160, OvrAccount)> {
+        // {0.}
         let gas_price = self.check_gas_price(sb, b).c(d!())?;
 
         // {1.} if success, then the transaction signature is valid.
@@ -67,13 +70,14 @@ impl Tx {
         }
 
         // {3.}{4.}
-        match self.check_balance(&addr, gas_price.clone(), sb, b) {
-            Ok((a, gas_limit)) => Ok((addr, a, gas_limit, gas_price)),
-            Err((needed_balance, total_balance)) => Err(eg!(
+        match self.check_balance(&addr, gas_price, sb, b) {
+            Ok((account, _)) => Ok((addr, account)),
+            Err(Some((account, needed_amount))) => Err(eg!(
                 "Insufficient balance, needed: {}, total: {}",
-                needed_balance,
-                total_balance
+                needed_amount,
+                account.balance
             )),
+            Err(_) => Err(eg!()),
         }
     }
 
@@ -81,82 +85,84 @@ impl Tx {
     // - Legacy transactions
     // - EIP2930 transactons
     // - EIP1559 transactions
-    //
-    // Both LegacyTransaction and TransactionV2 data formats are supported.
-    fn exec(
-        self,
-        addr: H160,
-        sb: &mut StateBranch,
-        b: BranchName,
-    ) -> StdResult<U256, U256> {
+    fn exec(self, addr: H160, sb: &mut StateBranch, b: BranchName) -> ExecRet {
         let metadata = StackSubstateMetadata::new(u64::MAX, &EVM_CFG);
         let mut backend = sb.state.evm.get_backend_hdr(b);
         let state = OvrStackState::new(metadata, &backend);
 
-        // TODO
-        let precompiles = BTreeMap::new();
-
+        let precompiles = PRECOMPILE_SET.clone();
         let mut executor =
             StackExecutor::new_with_precompiles(state, &EVM_CFG, &precompiles);
 
-        let (exit_reason, data) = match self.tx {
-            TransactionAny::Legacy(tx) => match tx.action {
-                TransactionAction::Call(target) => executor.transact_call(
-                    addr,
-                    target,
-                    tx.value,
-                    tx.input,
-                    tx.gas_limit.try_into().unwrap_or(u64::MAX),
-                    vec![],
-                ),
-                TransactionAction::Create => {
-                    todo!()
+        let (exit_reason, extra_data) = match self.tx {
+            TransactionAny::Legacy(tx) => {
+                let gas_limit = tx.gas_limit.try_into().unwrap_or(u64::MAX);
+                match tx.action {
+                    TransactionAction::Call(target) => executor.transact_call(
+                        addr,
+                        target,
+                        tx.value,
+                        tx.input,
+                        gas_limit,
+                        vec![],
+                    ),
+                    TransactionAction::Create => (
+                        executor.transact_create(
+                            addr,
+                            tx.value,
+                            tx.input,
+                            gas_limit,
+                            vec![],
+                        ),
+                        vec![],
+                    ),
                 }
-            },
-            TransactionAny::EIP2930(tx) => match tx.action {
-                TransactionAction::Call(target) => executor.transact_call(
-                    addr,
-                    target,
-                    tx.value,
-                    tx.input,
-                    tx.gas_limit.try_into().unwrap_or(u64::MAX),
-                    tx.access_list
-                        .into_iter()
-                        .map(|al| (al.address, al.slots))
-                        .collect(),
-                ),
-                TransactionAction::Create => {
-                    todo!()
+            }
+            TransactionAny::EIP2930(tx) => {
+                let gas_limit = tx.gas_limit.try_into().unwrap_or(u64::MAX);
+                let al = tx
+                    .access_list
+                    .into_iter()
+                    .map(|al| (al.address, al.slots))
+                    .collect();
+                match tx.action {
+                    TransactionAction::Call(target) => executor
+                        .transact_call(addr, target, tx.value, tx.input, gas_limit, al),
+                    TransactionAction::Create => (
+                        executor
+                            .transact_create(addr, tx.value, tx.input, gas_limit, al),
+                        vec![],
+                    ),
                 }
-            },
-            TransactionAny::EIP1559(tx) => match tx.action {
-                TransactionAction::Call(target) => executor.transact_call(
-                    addr,
-                    target,
-                    tx.value,
-                    tx.input,
-                    tx.gas_limit.try_into().unwrap_or(u64::MAX),
-                    tx.access_list
-                        .into_iter()
-                        .map(|al| (al.address, al.slots))
-                        .collect(),
-                ),
-                TransactionAction::Create => {
-                    todo!()
+            }
+            TransactionAny::EIP1559(tx) => {
+                let gas_limit = tx.gas_limit.try_into().unwrap_or(u64::MAX);
+                let al = tx
+                    .access_list
+                    .into_iter()
+                    .map(|al| (al.address, al.slots))
+                    .collect();
+                match tx.action {
+                    TransactionAction::Call(target) => executor
+                        .transact_call(addr, target, tx.value, tx.input, gas_limit, al),
+                    TransactionAction::Create => (
+                        executor
+                            .transact_create(addr, tx.value, tx.input, gas_limit, al),
+                        vec![],
+                    ),
                 }
-            },
+            }
         };
 
         let gas_used = U256::from(executor.used_gas());
+        let success = matches!(exit_reason, ExitReason::Succeed(_));
 
-        match exit_reason {
-            ExitReason::Succeed(info) => {
-                let (changes, logs) = executor.into_state().deconstruct();
-                backend.apply(changes, logs, false);
-                Ok(gas_used)
-            }
-            _ => Err(gas_used),
+        if success {
+            let (changes, logs) = executor.into_state().deconstruct();
+            backend.apply(changes, logs, false);
         }
+
+        ExecRet::new(success, exit_reason, gas_used, extra_data)
     }
 
     fn check_gas_price(&self, sb: &StateBranch, b: BranchName) -> Result<U256> {
@@ -166,11 +172,11 @@ impl Tx {
         let gas_price = match &self.tx {
             TransactionAny::Legacy(tx) => &tx.gas_price,
             TransactionAny::EIP2930(tx) => &tx.gas_price,
-            TransactionAny::EIP1559(tx) => &GAS_PRICE_MIN,
+            TransactionAny::EIP1559(_tx) => &GAS_PRICE_MIN,
         };
 
         if gas_price_min <= gas_price {
-            Ok(gas_price.clone())
+            Ok(*gas_price)
         } else {
             Err(eg!("Gas price is too low"))
         }
@@ -182,29 +188,29 @@ impl Tx {
         gas_price: U256,
         sb: &StateBranch,
         b: BranchName,
-    ) -> StdResult<(OvrAccount, U256), (U256, U256)> {
+    ) -> StdResult<(OvrAccount, NeededAmount), Option<(OvrAccount, NeededAmount)>> {
         let (transfer_value, gas_limit) = match &self.tx {
             TransactionAny::Legacy(tx) => (tx.value, tx.gas_limit),
             TransactionAny::EIP2930(tx) => (tx.value, tx.gas_limit),
             TransactionAny::EIP1559(tx) => (tx.value, tx.gas_limit),
         };
 
-        let needed_balance = transfer_value
-            .checked_add(gas_price.saturating_mul(gas_limit))
-            .ok_or(Default::default())?;
+        let needed_amount = gas_price
+            .checked_mul(gas_limit)
+            .and_then(|fee_limit| transfer_value.checked_add(fee_limit))
+            .ok_or(None)?;
 
-        let mut a = sb
+        let account = sb
             .state
             .evm
             .accounts
             .get_by_branch(addr, b)
             .unwrap_or_default();
 
-        if needed_balance <= a.balance {
-            a.balance -= needed_balance;
-            Ok((a, gas_limit))
+        if needed_amount <= account.balance {
+            Ok((account, needed_amount))
         } else {
-            Err((needed_balance, a.balance))
+            Err(Some((account, needed_amount)))
         }
     }
 
@@ -226,7 +232,7 @@ impl Tx {
             .accounts
             .get_by_branch(addr, b)
             .map(|a| a.nonce)
-            .unwrap_or_else(|| U256::zero());
+            .unwrap_or_else(U256::zero);
 
         if tx_nonce == system_nonce {
             Ok(())
@@ -270,5 +276,29 @@ impl Tx {
         Some(H160::from(H256::from_slice(
             Keccak256::digest(&pubkey).as_slice(),
         )))
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) struct ExecRet {
+    pub(crate) success: bool,
+    pub(crate) fee_used: U256,
+    pub(crate) exit_reason: ExitReason,
+    pub(crate) extra_data: Vec<u8>,
+}
+
+impl ExecRet {
+    fn new(
+        success: bool,
+        exit_reason: ExitReason,
+        fee_used: U256,
+        extra_data: Vec<u8>,
+    ) -> Self {
+        Self {
+            success,
+            exit_reason,
+            fee_used,
+            extra_data,
+        }
     }
 }

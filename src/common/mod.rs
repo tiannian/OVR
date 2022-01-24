@@ -1,7 +1,6 @@
 use primitive_types::{H160, H256};
 use ruc::*;
 use sha3::{Digest, Sha3_256};
-use std::mem::size_of;
 
 pub(crate) type BlockHeight = u64;
 

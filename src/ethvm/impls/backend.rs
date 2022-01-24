@@ -7,9 +7,7 @@
 use crate::ethvm::{OvrAccount, OvrVicinity};
 use evm::backend::{Apply, ApplyBackend, Backend, Basic, Log};
 use primitive_types::{H160, H256, U256};
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-use vsdb::{BranchName, Mapx, MapxVs, Vecx};
+use vsdb::{BranchName, MapxVs};
 
 // Ovr backend, storing all state values in vsdb.
 #[derive(Clone, Debug)]
@@ -32,15 +30,15 @@ impl<'vicinity> OvrBackend<'vicinity> {
         }
     }
 
-    #[inline(always)]
-    pub(crate) fn state(&self) -> &MapxVs<H160, OvrAccount> {
-        &self.state
-    }
+    // #[inline(always)]
+    // pub(crate) fn state(&self) -> &MapxVs<H160, OvrAccount> {
+    //     &self.state
+    // }
 
-    // Get a mutable reference to the underlying `MapxVs` storing the state.
-    pub(crate) fn state_mut(&mut self) -> &mut MapxVs<H160, OvrAccount> {
-        &mut self.state
-    }
+    // // Get a mutable reference to the underlying `MapxVs` storing the state.
+    // pub(crate) fn state_mut(&mut self) -> &mut MapxVs<H160, OvrAccount> {
+    //     &mut self.state
+    // }
 }
 
 impl<'vicinity> Backend for OvrBackend<'vicinity> {
@@ -96,14 +94,14 @@ impl<'vicinity> Backend for OvrBackend<'vicinity> {
     fn code(&self, address: H160) -> Vec<u8> {
         self.state
             .get_by_branch(&address, self.branch)
-            .map(|v| v.code.clone())
+            .map(|v| v.code)
             .unwrap_or_default()
     }
 
     fn storage(&self, address: H160, index: H256) -> H256 {
         self.state
             .get_by_branch(&address, self.branch)
-            .map(|v| v.storage.get(&index).map(|v| v.clone()).unwrap_or_default())
+            .map(|v| v.storage.get(&index).unwrap_or_default())
             .unwrap_or_default()
     }
 
@@ -140,15 +138,14 @@ impl<'vicinity> ApplyBackend for OvrBackend<'vicinity> {
                         }
 
                         if reset_storage {
-                            account.storage = BTreeMap::new();
+                            account.storage.clear();
                         }
 
                         let zeros = account
                             .storage
                             .iter()
-                            .filter(|(_, v)| v == &&H256::default())
+                            .filter(|(_, v)| v == &H256::default())
                             .map(|(k, _)| k)
-                            .cloned()
                             .collect::<Vec<H256>>();
 
                         for zero in zeros {
