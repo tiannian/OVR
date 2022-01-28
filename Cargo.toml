@@ -40,11 +40,11 @@ fevm = { package = "pallet-evm", git = "https://github.com/ccmlm/frontier", tag 
 fevm-precompile-blake2 = { package = "pallet-evm-precompile-blake2", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
 fevm-precompile-bn128 = { package = "pallet-evm-precompile-bn128", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
 fevm-precompile-curve25519 = { package = "pallet-evm-precompile-curve25519", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
-fevm-precompile-dispatch = { package = "pallet-evm-precompile-dispatch", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
 fevm-precompile-ed25519 = { package = "pallet-evm-precompile-ed25519", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
 fevm-precompile-modexp = { package = "pallet-evm-precompile-modexp", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
 fevm-precompile-sha3fips = { package = "pallet-evm-precompile-sha3fips", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
 fevm-precompile-simple = { package = "pallet-evm-precompile-simple", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
+# fevm-precompile-dispatch = { package = "pallet-evm-precompile-dispatch", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
 
 precompile-utils = { git = "https://github.com/ccmlm/precompile_utils.git" }
 
