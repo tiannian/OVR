@@ -13,12 +13,9 @@ use vsdb::{BranchName, MapxOrd, OrphanVs, Vs};
 #[allow(non_snake_case)]
 #[derive(Vs, Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct State {
-    pub(crate) chain_id: U256,
     pub(crate) gas_price: OrphanVs<U256>,
     pub(crate) block_gas_limit: OrphanVs<U256>,
     pub(crate) block_base_fee_per_gas: OrphanVs<U256>,
-    pub(crate) block_coinbase: H160,
-    pub(crate) block_timestamp: U256,
 
     pub(crate) OVR: Erc20Like,
     pub(crate) OVRG: Erc20Like,
@@ -44,16 +41,21 @@ impl State {
 
     // update with each new block
     #[inline(always)]
-    pub(crate) fn update_vicinity(&mut self) {
+    pub(crate) fn update_vicinity(
+        &mut self,
+        chain_id: U256,
+        block_coinbase: H160,
+        block_timestamp: U256,
+    ) {
         self.vicinity = OvrVicinity {
             gas_price: self.gas_price.get_value(),
             origin: H160::zero(),
-            chain_id: self.chain_id,
+            chain_id,
             block_number: U256::from(
                 self.block_hashes.last().map(|(h, _)| h).unwrap_or(0),
             ),
-            block_coinbase: self.block_coinbase,
-            block_timestamp: self.block_timestamp,
+            block_coinbase,
+            block_timestamp,
             block_difficulty: U256::zero(),
             block_gas_limit: self.block_gas_limit.get_value(),
             block_base_fee_per_gas: self.block_base_fee_per_gas.get_value(),

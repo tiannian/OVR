@@ -44,15 +44,20 @@ const GAS_TRANSFER_FROM: u64 = 6610;
 
 #[derive(Vs, Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct Erc20Like {
+    // will never change
     pub(crate) contract_addr: H160,
+
     pub(crate) name: Vec<u8>,
     pub(crate) symbol: Vec<u8>,
     pub(crate) decimal: u32,
     pub(crate) issue_cap: Option<U256>,
     pub(crate) total_supply: OrphanVs<U256>,
+
     pub(crate) accounts: MapxVs<H160, OvrAccount>,
+
     // (addr, key) => value
     pub(crate) storages: MapxVs<(H160, H256), H256>,
+
     // (owner addr, spender addr) => amount
     pub(crate) allowances: MapxVs<(H160, H160), U256>,
 }

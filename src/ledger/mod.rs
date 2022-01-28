@@ -50,7 +50,6 @@ impl Ledger {
         state.chain_name.set_value(chain_name).unwrap();
         state.chain_version.set_value(chain_version).unwrap();
 
-        state.evm.chain_id = chain_id.into();
         state.evm.gas_price.set_value(gas_price.into()).unwrap();
         state
             .evm
@@ -144,19 +143,9 @@ impl StateBranch {
             .version_create_by_branch(ver.encode_value().as_ref().into(), b)
             .c(d!())?;
 
-        self.update_evm_state(b);
+        self.update_evm_aux(b);
 
         Ok(())
-    }
-
-    fn update_evm_state(&mut self, b: BranchName) {
-        self.state.evm.chain_id =
-            U256::from(self.state.chain_id.get_value_by_branch(b).unwrap());
-        self.state.evm.block_coinbase =
-            tm_proposer_to_evm_format(&self.block_in_process.header.proposer);
-        self.state.evm.block_timestamp =
-            U256::from(self.block_in_process.header.timestamp);
-        self.state.evm.update_vicinity();
     }
 
     /// Deal with each transaction.
@@ -236,6 +225,14 @@ impl StateBranch {
         self.state.blocks.insert(block.header.height, block);
 
         Ok(())
+    }
+
+    fn update_evm_aux(&mut self, b: BranchName) {
+        self.state.evm.update_vicinity(
+            U256::from(self.state.chain_id.get_value_by_branch(b).unwrap()),
+            tm_proposer_to_evm_format(&self.block_in_process.header.proposer),
+            U256::from(self.block_in_process.header.timestamp),
+        );
     }
 
     // #[inline(always)]
