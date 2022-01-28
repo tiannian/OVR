@@ -9,13 +9,15 @@ use crate::{
         block_hash_to_evm_format, hash_sha3_256, tm_proposer_to_evm_format, BlockHeight,
         HashValue, HashValueRef, TmAddress, TmAddressRef,
     },
-    ethvm,
+    ethvm::{self, tx::GAS_PRICE_MIN},
     tx::Tx,
 };
+use once_cell::sync::Lazy;
+use parking_lot::RwLock;
 use primitive_types::{H160, U256};
 use ruc::*;
 use serde::{Deserialize, Serialize};
-use std::mem;
+use std::{fs, mem, sync::Arc};
 use vsdb::{
     merkle::{MerkleTree, MerkleTreeStore},
     BranchName, MapxOrd, OrphanVs, ParentBranchName, ValueEn, Vs, VsMgmt,
@@ -25,12 +27,17 @@ const MAIN_BRANCH_NAME: BranchName = BranchName(b"Main");
 const DELIVER_TX_BRANCH_NAME: BranchName = BranchName(b"DeliverTx");
 const CHECK_TX_BRANCH_NAME: BranchName = BranchName(b"CheckTx");
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Ledger {
-    state: State,
-    pub main: StateBranch,
-    pub deliver_tx: StateBranch,
-    pub check_tx: StateBranch,
+static LEDGER_SNAPSHOT_PATH: Lazy<String> = Lazy::new(|| {
+    let dir = format!("{}/ovr/ledger", vsdb::vsdb_get_custom_dir());
+    pnk!(fs::create_dir_all(&dir));
+    dir + "/ledger.json"
+});
+
+#[derive(Clone, Debug)]
+pub(crate) struct Ledger {
+    pub main: Arc<RwLock<StateBranch>>,
+    pub deliver_tx: Arc<RwLock<StateBranch>>,
+    pub check_tx: Arc<RwLock<StateBranch>>,
 }
 
 impl Ledger {
@@ -38,9 +45,9 @@ impl Ledger {
         chain_id: u64,
         chain_name: String,
         chain_version: String,
-        gas_price: u128,
-        block_gas_limit: u128,
-        block_base_fee_per_gas: u128,
+        gas_price: Option<u128>,
+        block_gas_limit: Option<u128>,
+        block_base_fee_per_gas: Option<u128>,
     ) -> Self {
         let mut state = State::default();
         state.branch_create(MAIN_BRANCH_NAME).unwrap();
@@ -50,16 +57,20 @@ impl Ledger {
         state.chain_name.set_value(chain_name).unwrap();
         state.chain_version.set_value(chain_version).unwrap();
 
-        state.evm.gas_price.set_value(gas_price.into()).unwrap();
+        state
+            .evm
+            .gas_price
+            .set_value(gas_price.map(|v| v.into()).unwrap_or(*GAS_PRICE_MIN))
+            .unwrap();
         state
             .evm
             .block_gas_limit
-            .set_value(block_gas_limit.into())
+            .set_value(block_gas_limit.unwrap_or(u128::MAX).into())
             .unwrap();
         state
             .evm
             .block_base_fee_per_gas
-            .set_value(block_base_fee_per_gas.into())
+            .set_value(block_base_fee_per_gas.unwrap_or_default().into())
             .unwrap();
 
         let main = StateBranch::new(&state, MAIN_BRANCH_NAME);
@@ -70,38 +81,81 @@ impl Ledger {
         state.branch_create(check_tx.branch_name()).unwrap();
 
         Self {
-            state,
-            main,
-            deliver_tx,
-            check_tx,
+            main: Arc::new(RwLock::new(main)),
+            deliver_tx: Arc::new(RwLock::new(deliver_tx)),
+            check_tx: Arc::new(RwLock::new(check_tx)),
         }
     }
 
-    pub fn refresh(&self) -> Result<()> {
-        self.state
-            .branch_remove(self.check_tx.branch_name())
-            .c(d!())?;
-        self.state
-            .branch_merge_to_parent(self.deliver_tx.branch_name())
-            .c(d!())?;
-        self.state
-            .branch_create_by_base_branch(
-                self.deliver_tx.branch_name(),
-                ParentBranchName::from(&self.main.branch),
-            )
-            .c(d!())?;
-        self.state.branch_create_by_base_branch(
-            self.check_tx.branch_name(),
-            ParentBranchName::from(&self.main.branch),
-        )
+    #[inline(always)]
+    pub(crate) fn consensus_refresh(
+        &self,
+        proposer: TmAddress,
+        timestamp: u64,
+    ) -> Result<()> {
+        self.refresh_inner(proposer, timestamp, false)
+    }
+
+    #[inline(always)]
+    fn loading_refresh(&self) -> Result<()> {
+        self.refresh_inner(Default::default(), Default::default(), true)
+    }
+
+    fn refresh_inner(
+        &self,
+        proposer: TmAddress,
+        timestamp: u64,
+        is_loading: bool,
+    ) -> Result<()> {
+        let mut main = self.main.write();
+        if !is_loading {
+            main.prepare_next_block(proposer, timestamp).c(d!())?;
+        }
+        main.state.refresh_branches().c(d!())?;
+        main.clean_cache();
+
+        let mut deliver_tx = self.deliver_tx.write();
+        let br = deliver_tx.branch.clone();
+        deliver_tx.state = main.state.clone();
+        deliver_tx.state.branch_set_default(br.as_slice().into());
+        deliver_tx.clean_cache();
+
+        let mut check_tx = self.check_tx.write();
+        let br = check_tx.branch.clone();
+        check_tx.state = main.state.clone();
+        check_tx.state.branch_set_default(br.as_slice().into());
+        check_tx.clean_cache();
+
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub(crate) fn commit(&self) -> Result<HashValue> {
+        let mut main = self.main.write();
+        main.commit().c(d!()).map(|_| main.last_block_hash())
+    }
+
+    #[inline(always)]
+    pub fn load_from_snapshot(&self) -> Result<Self> {
+        let sb = StateBranch::load_from_snapshot().c(d!())?;
+
+        let ledger = Ledger {
+            main: Arc::new(RwLock::new(sb.clone())),
+            deliver_tx: Arc::new(RwLock::new(sb.clone())),
+            check_tx: Arc::new(RwLock::new(sb)),
+        };
+
+        ledger.loading_refresh().c(d!())?;
+
+        Ok(ledger)
     }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct StateBranch {
+pub(crate) struct StateBranch {
     pub(crate) state: State,
     pub(crate) branch: Vec<u8>,
-    pub(crate) tx_hashes: Vec<HashValue>,
+    pub(crate) tx_hashes_in_process: Vec<HashValue>,
     pub(crate) block_in_process: Block,
 }
 
@@ -111,21 +165,16 @@ impl StateBranch {
         Self {
             state: state.clone(),
             branch: branch.0.to_owned(),
-            tx_hashes: vec![],
+            tx_hashes_in_process: vec![],
             block_in_process: Block::default(),
         }
     }
 
-    /// NOTE:
-    /// - Only used by the 'main' branch of `Ledger`
-    /// - Call this in the 'Info' and 'Commit' field of ABCI
-    /// - Should **NOT** be called in the 'BeginBlock' field of ABCI
-    pub fn prepare_next_block(
-        &mut self,
-        proposer: TmAddress,
-        timestamp: u64,
-    ) -> Result<()> {
-        self.tx_hashes.clear();
+    // NOTE:
+    // - Only used by the 'main' branch of `Ledger`
+    // - Call this in the 'BeginBlock' field of ABCI
+    fn prepare_next_block(&mut self, proposer: TmAddress, timestamp: u64) -> Result<()> {
+        self.tx_hashes_in_process.clear();
 
         let (h, prev_hash) = self
             .state
@@ -148,15 +197,15 @@ impl StateBranch {
         Ok(())
     }
 
-    /// Deal with each transaction.
-    /// Will be used by all the 3 branches of `Ledger`.
-    pub fn apply_tx(&mut self, tx: Tx) -> Result<()> {
+    // Deal with each transaction.
+    // Will be used by all the 3 branches of `Ledger`.
+    pub(crate) fn apply_tx(&mut self, tx: Tx) -> Result<()> {
         let b = self.branch.clone();
         let b = b.as_slice().into();
 
         let ver = VsVersion::new(
             self.block_in_process.header.height,
-            1 + self.tx_hashes.len() as u64,
+            1 + self.tx_hashes_in_process.len() as u64,
         );
         self.state
             .version_create_by_branch(ver.encode_value().as_ref().into(), b)
@@ -169,7 +218,7 @@ impl StateBranch {
                 .apply(self, b)
                 .map(|ret| {
                     self.charge_fee(ret.caller, ret.fee_used, b);
-                    self.tx_hashes.push(tx_hash);
+                    self.tx_hashes_in_process.push(tx_hash);
                 })
                 .map_err(|e| {
                     pnk!(self.state.version_pop_by_branch(b));
@@ -182,7 +231,7 @@ impl StateBranch {
                 .apply(self, b)
                 .map(|ret| {
                     self.charge_fee(ret.caller, ret.fee_used, b);
-                    self.tx_hashes.push(tx_hash);
+                    self.tx_hashes_in_process.push(tx_hash);
                 })
                 .map_err(|e| {
                     pnk!(self.state.version_pop_by_branch(b));
@@ -194,15 +243,15 @@ impl StateBranch {
         }
     }
 
-    /// NOTE:
-    /// - Only used by the 'main' branch of the `Ledger`
-    pub fn end_block(&mut self) -> Result<()> {
+    // NOTE:
+    // - Only used by the 'main' branch of the `Ledger`
+    fn commit(&mut self) -> Result<()> {
         // Make it never empty,
         // thus the root hash will always exist
-        self.tx_hashes.push(hash_sha3_256(&[&[]]));
+        self.tx_hashes_in_process.push(hash_sha3_256(&[&[]]));
 
         let hashes = self
-            .tx_hashes
+            .tx_hashes_in_process
             .iter()
             .map(|h| h.as_slice())
             .collect::<Vec<_>>();
@@ -224,7 +273,8 @@ impl StateBranch {
 
         self.state.blocks.insert(block.header.height, block);
 
-        Ok(())
+        vsdb::vsdb_flush();
+        self.write_snapshot().c(d!())
     }
 
     fn update_evm_aux(&mut self, b: BranchName) {
@@ -268,6 +318,40 @@ impl StateBranch {
     fn branch_name(&self) -> BranchName {
         self.branch.as_slice().into()
     }
+
+    #[inline(always)]
+    pub(crate) fn last_block(&self) -> Option<Block> {
+        self.state.blocks.last().map(|(_, b)| b)
+    }
+
+    #[inline(always)]
+    pub(crate) fn last_block_height(&self) -> BlockHeight {
+        self.state.blocks.last().map(|(h, _)| h).unwrap_or(0)
+    }
+
+    #[inline(always)]
+    pub(crate) fn last_block_hash(&self) -> HashValue {
+        self.last_block().unwrap_or_default().header_hash
+    }
+
+    #[inline(always)]
+    fn load_from_snapshot() -> Result<Self> {
+        fs::read_to_string(&*LEDGER_SNAPSHOT_PATH)
+            .c(d!())
+            .and_then(|c| serde_json::from_str::<StateBranch>(&c).c(d!()))
+    }
+
+    #[inline(always)]
+    fn write_snapshot(&self) -> Result<()> {
+        let contents = serde_json::to_string_pretty(self).c(d!())?;
+        fs::write(&*LEDGER_SNAPSHOT_PATH, &contents).c(d!())
+    }
+
+    #[inline(always)]
+    fn clean_cache(&mut self) {
+        self.tx_hashes_in_process.clear();
+        self.block_in_process = Block::default();
+    }
 }
 
 #[derive(Vs, Default, Clone, Debug, Deserialize, Serialize)]
@@ -281,6 +365,24 @@ pub(crate) struct State {
 
     // maintained by the 'main' branch only
     pub(crate) blocks: MapxOrd<BlockHeight, Block>,
+}
+
+impl State {
+    fn refresh_branches(&self) -> Result<()> {
+        self.branch_remove(CHECK_TX_BRANCH_NAME).c(d!())?;
+        self.branch_merge_to_parent(DELIVER_TX_BRANCH_NAME)
+            .c(d!())?;
+        self.branch_create_by_base_branch(
+            DELIVER_TX_BRANCH_NAME,
+            ParentBranchName::from(MAIN_BRANCH_NAME.0),
+        )
+        .c(d!())?;
+        self.branch_create_by_base_branch(
+            CHECK_TX_BRANCH_NAME,
+            ParentBranchName::from(MAIN_BRANCH_NAME.0),
+        )
+        .c(d!())
+    }
 }
 
 #[derive(Vs, Clone, Debug, Default, Deserialize, Serialize)]

@@ -20,7 +20,7 @@ use std::{collections::BTreeMap, fmt, result::Result as StdResult};
 use vsdb::BranchName;
 
 static EVM_CFG: Lazy<EvmCfg> = Lazy::new(EvmCfg::istanbul);
-static GAS_PRICE_MIN: Lazy<U256> = Lazy::new(|| U256::from(10u8));
+pub(crate) static GAS_PRICE_MIN: Lazy<U256> = Lazy::new(|| U256::from(10u8));
 
 type GasPrice = U256;
 type NeededAmount = U256;
