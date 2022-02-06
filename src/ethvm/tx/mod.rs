@@ -48,8 +48,8 @@ impl Tx {
     // 0. ensure the given gas price is big enough
     // 1. verify the transaction signature
     // 2. ensure the transaction nonce is bigger than the last nonce
-    // 3. ensure the balance of OVRG is bigger than `spent_amount + gas_limit`
-    // 4. deducte `gas_limit` from the balance of OVRG
+    // 3. ensure the balance of OFUEL is bigger than `spent_amount + gas_limit`
+    // 4. deducte `gas_limit` from the balance of OFUEL
     fn pre_exec(
         &self,
         sb: &mut StateBranch,
@@ -310,7 +310,7 @@ impl Tx {
         let account = sb
             .state
             .evm
-            .OVRG
+            .OFUEL
             .accounts
             .get_by_branch(addr, b)
             .unwrap_or_default();
@@ -338,7 +338,7 @@ impl Tx {
         let system_nonce = sb
             .state
             .evm
-            .OVRG
+            .OFUEL
             .accounts
             .get_by_branch(addr, b)
             .map(|a| a.nonce)

@@ -23,10 +23,6 @@ use vsdb::MapxOrd;
 pub struct App {
     ledger: Ledger,
     cfg: Cfg,
-
-    // Used to avoid recurring transactions to
-    // be added into the 'tendermint' storage.
-    tx_history: MapxOrd<HashValue, ()>,
 }
 
 impl App {
@@ -42,14 +38,18 @@ impl App {
             cfg.gas_price,
             cfg.block_gas_limit,
             cfg.block_base_fee_per_gas,
-        );
-        let tx_history = MapxOrd::new();
+        )
+        .c(d!())?;
 
-        Ok(Self {
-            ledger,
-            cfg,
-            tx_history,
-        })
+        Ok(Self { ledger, cfg })
+    }
+
+    pub fn load_or_create(cfg: Cfg) -> Result<Self> {
+        if let Some(ledger) = Ledger::load_from_snapshot().c(d!())? {
+            Ok(Self { ledger, cfg })
+        } else {
+            Self::new(cfg).c(d!())
+        }
     }
 
     #[cfg(target_os = "linux")]
@@ -97,16 +97,10 @@ impl Application for App {
 
         if let Ok(tx) = Tx::deserialize(&req.tx) {
             if tx.valid_in_abci() {
-                let tx_hash = tx.hash();
-                if self.tx_history.contains_key(&tx_hash) {
-                    resp.log = "Historical transaction".to_owned();
+                let mut sb = self.ledger.check_tx.write();
+                if let Err(e) = info!(sb.apply_tx(tx)) {
+                    resp.log = e.to_string();
                     resp.code = 1;
-                } else {
-                    let mut sb = self.ledger.check_tx.write();
-                    if let Err(e) = info!(sb.apply_tx(tx)) {
-                        resp.log = e.to_string();
-                        resp.code = 1;
-                    }
                 }
             } else {
                 resp.log = "Should not appear in ABCI".to_owned();
@@ -137,9 +131,6 @@ impl Application for App {
 
         if let Ok(tx) = Tx::deserialize(&req.tx) {
             if tx.valid_in_abci() {
-                let tx_hash = tx.hash();
-                self.tx_history.set_value(tx_hash, ());
-
                 let mut sb = self.ledger.deliver_tx.write();
                 if let Err(e) = info!(sb.apply_tx(tx)) {
                     resp.log = e.to_string();

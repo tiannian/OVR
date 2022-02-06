@@ -17,8 +17,7 @@ pub(crate) struct State {
     pub(crate) block_gas_limit: OrphanVs<U256>,
     pub(crate) block_base_fee_per_gas: OrphanVs<U256>,
 
-    pub(crate) OVR: Erc20Like,
-    pub(crate) OVRG: Erc20Like,
+    pub(crate) OFUEL: Erc20Like,
 
     // Environmental block hashes.
     pub(crate) block_hashes: MapxOrd<BlockHeight, H256>,
@@ -32,8 +31,8 @@ impl State {
     fn get_backend_hdr<'a>(&self, branch: BranchName<'a>) -> OvrBackend<'a> {
         OvrBackend {
             branch,
-            state: self.OVRG.accounts.clone(),
-            storages: self.OVRG.storages.clone(),
+            state: self.OFUEL.accounts.clone(),
+            storages: self.OFUEL.storages.clone(),
             block_hashes: self.block_hashes,
             vicinity: self.vicinity.clone(),
         }
@@ -63,10 +62,8 @@ impl State {
     }
 
     // fn get_token_hdr(&self, contract_addr: H160) -> &Erc20Like {
-    //     if Erc20Like::addr_is_ovr(contract_addr) {
-    //         &self.OVR
-    //     } else if Erc20Like::addr_is_ovrg(contract_addr) {
-    //         &self.OVRG
+    //     if Erc20Like::addr_is_ofuel(contract_addr) {
+    //         &self.OFUEL
     //     } else {
     //         unreachable!()
     //     }
@@ -74,10 +71,8 @@ impl State {
 
     #[inline(always)]
     fn get_token_hdr_mut(&mut self, contract_addr: H160) -> &mut Erc20Like {
-        if Erc20Like::addr_is_ovr(contract_addr) {
-            &mut self.OVR
-        } else if Erc20Like::addr_is_ovrg(contract_addr) {
-            &mut self.OVRG
+        if Erc20Like::addr_is_ofuel(contract_addr) {
+            &mut self.OFUEL
         } else {
             unreachable!()
         }
@@ -87,8 +82,7 @@ impl State {
 impl Default for State {
     fn default() -> Self {
         Self {
-            OVR: Erc20Like::ovr_token(),
-            OVRG: Erc20Like::ovrg_token(),
+            OFUEL: Erc20Like::ofuel_token(),
             ..Default::default()
         }
     }

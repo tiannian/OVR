@@ -17,7 +17,7 @@ use parking_lot::RwLock;
 use primitive_types::{H160, U256};
 use ruc::*;
 use serde::{Deserialize, Serialize};
-use std::{fs, mem, sync::Arc};
+use std::{fs, io::ErrorKind, mem, sync::Arc};
 use vsdb::{
     merkle::{MerkleTree, MerkleTreeStore},
     BranchName, MapxOrd, OrphanVs, ParentBranchName, ValueEn, Vs, VsMgmt,
@@ -28,16 +28,18 @@ const DELIVER_TX_BRANCH_NAME: BranchName = BranchName(b"DeliverTx");
 const CHECK_TX_BRANCH_NAME: BranchName = BranchName(b"CheckTx");
 
 static LEDGER_SNAPSHOT_PATH: Lazy<String> = Lazy::new(|| {
-    let dir = format!("{}/ovr/ledger", vsdb::vsdb_get_custom_dir());
+    let dir = format!("{}/or/ledger", vsdb::vsdb_get_custom_dir());
     pnk!(fs::create_dir_all(&dir));
     dir + "/ledger.json"
 });
 
 #[derive(Clone, Debug)]
 pub(crate) struct Ledger {
-    pub main: Arc<RwLock<StateBranch>>,
-    pub deliver_tx: Arc<RwLock<StateBranch>>,
-    pub check_tx: Arc<RwLock<StateBranch>>,
+    // used for web3 APIs
+    pub(crate) state: State,
+    pub(crate) main: Arc<RwLock<StateBranch>>,
+    pub(crate) deliver_tx: Arc<RwLock<StateBranch>>,
+    pub(crate) check_tx: Arc<RwLock<StateBranch>>,
 }
 
 impl Ledger {
@@ -48,7 +50,7 @@ impl Ledger {
         gas_price: Option<u128>,
         block_gas_limit: Option<u128>,
         block_base_fee_per_gas: Option<u128>,
-    ) -> Self {
+    ) -> Result<Self> {
         let mut state = State::default();
         state.branch_create(MAIN_BRANCH_NAME).unwrap();
         state.branch_set_default(MAIN_BRANCH_NAME).unwrap();
@@ -73,18 +75,19 @@ impl Ledger {
             .set_value(block_base_fee_per_gas.unwrap_or_default().into())
             .unwrap();
 
-        let main = StateBranch::new(&state, MAIN_BRANCH_NAME);
-        let deliver_tx = StateBranch::new(&state, DELIVER_TX_BRANCH_NAME);
-        let check_tx = StateBranch::new(&state, CHECK_TX_BRANCH_NAME);
+        let main = StateBranch::new(&state, MAIN_BRANCH_NAME).c(d!())?;
+        let deliver_tx = StateBranch::new(&state, DELIVER_TX_BRANCH_NAME).c(d!())?;
+        let check_tx = StateBranch::new(&state, CHECK_TX_BRANCH_NAME).c(d!())?;
 
         state.branch_create(deliver_tx.branch_name()).unwrap();
         state.branch_create(check_tx.branch_name()).unwrap();
 
-        Self {
+        Ok(Self {
+            state,
             main: Arc::new(RwLock::new(main)),
             deliver_tx: Arc::new(RwLock::new(deliver_tx)),
             check_tx: Arc::new(RwLock::new(check_tx)),
-        }
+        })
     }
 
     #[inline(always)]
@@ -117,13 +120,19 @@ impl Ledger {
         let mut deliver_tx = self.deliver_tx.write();
         let br = deliver_tx.branch.clone();
         deliver_tx.state = main.state.clone();
-        deliver_tx.state.branch_set_default(br.as_slice().into());
+        deliver_tx
+            .state
+            .branch_set_default(br.as_slice().into())
+            .c(d!())?;
         deliver_tx.clean_cache();
 
         let mut check_tx = self.check_tx.write();
         let br = check_tx.branch.clone();
         check_tx.state = main.state.clone();
-        check_tx.state.branch_set_default(br.as_slice().into());
+        check_tx
+            .state
+            .branch_set_default(br.as_slice().into())
+            .c(d!())?;
         check_tx.clean_cache();
 
         Ok(())
@@ -136,18 +145,21 @@ impl Ledger {
     }
 
     #[inline(always)]
-    pub fn load_from_snapshot(&self) -> Result<Self> {
-        let sb = StateBranch::load_from_snapshot().c(d!())?;
-
-        let ledger = Ledger {
-            main: Arc::new(RwLock::new(sb.clone())),
-            deliver_tx: Arc::new(RwLock::new(sb.clone())),
-            check_tx: Arc::new(RwLock::new(sb)),
-        };
-
-        ledger.loading_refresh().c(d!())?;
-
-        Ok(ledger)
+    pub fn load_from_snapshot() -> Result<Option<Self>> {
+        match StateBranch::load_from_snapshot().c(d!()) {
+            Ok(Some(sb)) => {
+                let ledger = Ledger {
+                    state: sb.state.clone(),
+                    main: Arc::new(RwLock::new(sb.clone())),
+                    deliver_tx: Arc::new(RwLock::new(sb.clone())),
+                    check_tx: Arc::new(RwLock::new(sb)),
+                };
+                ledger.loading_refresh().c(d!())?;
+                Ok(Some(ledger))
+            }
+            Ok(None) => Ok(None),
+            Err(e) => Err(e).c(d!()),
+        }
     }
 }
 
@@ -161,13 +173,16 @@ pub(crate) struct StateBranch {
 
 impl StateBranch {
     #[inline(always)]
-    fn new(state: &State, branch: BranchName) -> Self {
-        Self {
-            state: state.clone(),
+    fn new(state: &State, branch: BranchName) -> Result<Self> {
+        let mut s = state.clone();
+        s.branch_set_default(branch).c(d!())?;
+
+        Ok(Self {
+            state: s,
             branch: branch.0.to_owned(),
             tx_hashes_in_process: vec![],
             block_in_process: Block::default(),
-        }
+        })
     }
 
     // NOTE:
@@ -301,14 +316,14 @@ impl StateBranch {
         let mut account = self
             .state
             .evm
-            .OVRG
+            .OFUEL
             .accounts
             .get_by_branch(&caller, b)
             .unwrap();
         account.balance = account.balance.saturating_sub(amount);
         self.state
             .evm
-            .OVRG
+            .OFUEL
             .accounts
             .insert_by_branch(caller, account, b)
             .unwrap();
@@ -324,10 +339,10 @@ impl StateBranch {
         self.state.blocks.last().map(|(_, b)| b)
     }
 
-    #[inline(always)]
-    pub(crate) fn last_block_height(&self) -> BlockHeight {
-        self.state.blocks.last().map(|(h, _)| h).unwrap_or(0)
-    }
+    // #[inline(always)]
+    // pub(crate) fn last_block_height(&self) -> BlockHeight {
+    //     self.state.blocks.last().map(|(h, _)| h).unwrap_or(0)
+    // }
 
     #[inline(always)]
     pub(crate) fn last_block_hash(&self) -> HashValue {
@@ -335,10 +350,17 @@ impl StateBranch {
     }
 
     #[inline(always)]
-    fn load_from_snapshot() -> Result<Self> {
-        fs::read_to_string(&*LEDGER_SNAPSHOT_PATH)
-            .c(d!())
-            .and_then(|c| serde_json::from_str::<StateBranch>(&c).c(d!()))
+    fn load_from_snapshot() -> Result<Option<Self>> {
+        match fs::read_to_string(&*LEDGER_SNAPSHOT_PATH) {
+            Ok(c) => serde_json::from_str::<StateBranch>(&c).c(d!()).map(Some),
+            Err(e) => {
+                if let ErrorKind::NotFound = e.kind() {
+                    Ok(None)
+                } else {
+                    Err(e).c(d!())
+                }
+            }
+        }
     }
 
     #[inline(always)]

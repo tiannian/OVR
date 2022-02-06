@@ -17,8 +17,7 @@ use slices::u8_slice;
 use std::result::Result as StdResult;
 use vsdb::{BranchName, MapxVs, OrphanVs, Vs};
 
-static OVR_ADDR: Lazy<H160> = Lazy::new(|| Erc20Like::ovr_token().contract_addr);
-static OVRG_ADDR: Lazy<H160> = Lazy::new(|| Erc20Like::ovrg_token().contract_addr);
+static OFUEL_ADDR: Lazy<H160> = Lazy::new(|| Erc20Like::ofuel_token().contract_addr);
 
 // ERC20 transfer event selector, Keccak256("Transfer(address,address,uint256)"),
 // event Transfer(address indexed from, address indexed to, uint256 value).
@@ -86,25 +85,12 @@ impl Erc20Like {
     }
 
     #[inline(always)]
-    pub(crate) fn ovr_token() -> Self {
+    pub(crate) fn ofuel_token() -> Self {
         let name: &[u8; 96] = u8_slice!(
             "0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000a4f76657265616c69747900000000000000000000000000000000000000000000"
         );
         let symbol: &[u8; 96] = u8_slice!(
-            "0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000034f56520000000000000000000000000000000000000000000000000000000000"
-        );
-        let issue_cap = Some((1_000_000_000u128 * 10u128.pow(18)).into());
-        let contract_addr = idx_to_h160(0x1001);
-        Self::new(name.to_vec(), symbol.to_vec(), 18, issue_cap, contract_addr)
-    }
-
-    #[inline(always)]
-    pub(crate) fn ovrg_token() -> Self {
-        let name: &[u8; 96] = u8_slice!(
-            "0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000a4f76657265616c69747900000000000000000000000000000000000000000000"
-        );
-        let symbol: &[u8; 96] = u8_slice!(
-            "0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000044f56524700000000000000000000000000000000000000000000000000000000"
+            "0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000054f4655454c000000000000000000000000000000000000000000000000000000"
         );
         let issue_cap = None;
         let contract_addr = idx_to_h160(0x1000); // Compitable with Findora
@@ -112,33 +98,23 @@ impl Erc20Like {
     }
 
     // #[inline(always)]
-    // fn is_ovr(&self) -> bool {
-    //     self.contract_addr == *OVR_ADDR
-    // }
-
-    // #[inline(always)]
-    // fn is_ovrg(&self) -> bool {
-    //     self.contract_addr == *OVRG_ADDR
+    // fn is_ofuel(&self) -> bool {
+    //     self.contract_addr == *OFUEL_ADDR
     // }
 
     // #[inline(always)]
     // pub(crate) fn is_meta_token(&self) -> bool {
-    //     self.is_ovr() || self.is_ovrg()
+    //     self.is_ofuel()
     // }
 
     #[inline(always)]
-    pub(crate) fn addr_is_ovr(addr: H160) -> bool {
-        addr == *OVR_ADDR
-    }
-
-    #[inline(always)]
-    pub(crate) fn addr_is_ovrg(addr: H160) -> bool {
-        addr == *OVRG_ADDR
+    pub(crate) fn addr_is_ofuel(addr: H160) -> bool {
+        addr == *OFUEL_ADDR
     }
 
     #[inline(always)]
     pub(crate) fn addr_is_meta_token(addr: H160) -> bool {
-        Self::addr_is_ovr(addr) || Self::addr_is_ovrg(addr)
+        Self::addr_is_ofuel(addr)
     }
 
     // #[inline(always)]

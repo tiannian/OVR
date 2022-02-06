@@ -5,10 +5,15 @@ use ruc::*;
 fn main() {
     let cfg = Cfg::parse();
 
-    if let Commands::Daemon(cfg) = cfg.commands {
-        let _app = pnk!(App::new(cfg));
-    } else {
-        // TODO
-        // client operations
+    match cfg.commands {
+        Commands::Daemon(cfg) => {
+            let _app = pnk!(App::load_or_create(cfg));
+        }
+        Commands::Client(_cfg) => {
+            todo!()
+        }
+        Commands::Debug(_cfg) => {
+            todo!()
+        }
     }
 }
