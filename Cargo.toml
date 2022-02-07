@@ -45,6 +45,7 @@ jsonrpc-derive = "18.0"
 evm = { version = "0.33.1", default-features = false, features = ["with-serde"] }
 ethereum = { version =  "0.11.1", default-features = false, features = ["with-serde"] }
 primitive-types = { version = "0.10.1", default-features = false, features = ["rlp", "byteorder", "serde"] }
+ethereum-types = "0.12"
 
 fevm = { package = "pallet-evm", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
 fevm-precompile-blake2 = { package = "pallet-evm-precompile-blake2", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
@@ -57,6 +58,8 @@ fevm-precompile-simple = { package = "pallet-evm-precompile-simple", git = "http
 # fevm-precompile-dispatch = { package = "pallet-evm-precompile-dispatch", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
 
 precompile-utils = { git = "https://github.com/ccmlm/precompile_utils.git" }
+
+web3-rpc-core = { git = "https://github.com/FindoraNetwork/web3-rpc.git" }
 
 [dev-dependencies]
 criterion = { version = "0.3", features = ["html_reports"]}
