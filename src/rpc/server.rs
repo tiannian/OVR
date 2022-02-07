@@ -1,12 +1,16 @@
-use std::{net::SocketAddr, thread};
+use std::{net::SocketAddr, thread, sync::Arc};
+
+use crate::ledger::StateBranch;
 
 use super::{eth::EthApiImpl, net::NetApiImpl, web3::Web3ApiImpl};
+use parking_lot::RwLock;
 use web3_rpc_core::{EthApi, NetApi, Web3Api};
 
-pub struct Web3ServerBuilder {
+pub(crate) struct Web3ServerBuilder {
     pub upstream: String,
     pub http: SocketAddr,
     pub ws: SocketAddr,
+    pub main: Arc<RwLock<StateBranch>>,
 }
 
 impl Web3ServerBuilder {
@@ -17,6 +21,7 @@ impl Web3ServerBuilder {
 
         let eth = EthApiImpl {
             upstream: upstream.clone(),
+            main: self.main.clone(),
         };
 
         let net = NetApiImpl {};
@@ -39,6 +44,7 @@ impl Web3ServerBuilder {
 
         let eth = EthApiImpl {
             upstream: upstream.clone(),
+            main: self.main.clone(),
         };
 
         let net = NetApiImpl {};

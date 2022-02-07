@@ -4,11 +4,13 @@
 
 #![allow(warnings)]
 
+use std::net::SocketAddr;
+
 use crate::{
     cfg::DaemonCfg as Cfg,
     common::{BlockHeight, HashValue},
     ledger::Ledger,
-    tx::Tx,
+    tx::Tx, rpc::Web3ServerBuilder,
 };
 use abci::Application;
 use ruc::*;
@@ -59,6 +61,19 @@ impl App {
 
     #[cfg(not(target_os = "linux"))]
     fn btm_snapshot(&self, _: BlockHeight) -> Result<()> {
+        Ok(())
+    }
+
+    fn start_web3(&self) -> Result<()> {
+        let web3_server = Web3ServerBuilder {
+            upstream: "http://127.0.0.1:26657".to_string(),
+            http: "127.0.0.1:8545".parse::<SocketAddr>().c(d!())?,
+            ws: "127.0.0.1:8546".parse::<SocketAddr>().c(d!())?,
+            main: self.ledger.main.clone(),
+        };
+
+        web3_server.build().start();
+
         Ok(())
     }
 }

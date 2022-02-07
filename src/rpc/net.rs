@@ -9,10 +9,12 @@ impl NetApi for NetApiImpl {
     }
 
     fn peer_count(&self) -> BoxFuture<Result<PeerCount>> {
+        // try to get infomation from tendermint.
         Box::pin(async move { Ok(PeerCount::U32(0)) })
     }
 
     fn is_listening(&self) -> BoxFuture<Result<bool>> {
+        // try to get infomation from tendermint.
         Box::pin(async move { Ok(true) })
     }
 }

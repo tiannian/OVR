@@ -1,5 +1,8 @@
+use std::sync::Arc;
+
 use ethereum_types::{H160, H256, H64, U256, U64};
 use jsonrpc_core::{BoxFuture, Result};
+use parking_lot::RwLock;
 use web3_rpc_core::{
     types::{
         BlockNumber, Bytes, CallRequest, Filter, Index, Log, Receipt, RichBlock, SyncStatus,
@@ -8,10 +11,13 @@ use web3_rpc_core::{
     EthApi,
 };
 
+use crate::ledger::StateBranch;
+
 use super::error;
 
-pub struct EthApiImpl {
+pub(crate) struct EthApiImpl {
     pub upstream: String,
+    pub main: Arc<RwLock<StateBranch>>,
 }
 
 impl EthApi for EthApiImpl {
@@ -20,16 +26,27 @@ impl EthApi for EthApiImpl {
     }
 
     fn chain_id(&self) -> BoxFuture<Result<Option<U64>>> {
-        // get chain_id.
+        let state = self.main.read();
 
-        Box::pin(async move { Ok(None) })
+        let chain_id = state.state.chain_id.get_value();
+
+        Box::pin(async move { Ok(Some(U64::from(chain_id))) })
     }
 
 
-    fn balance(&self, _address: H160, _height: Option<BlockNumber>) -> BoxFuture<Result<U256>> {
+    fn balance(&self, address: H160, _height: Option<BlockNumber>) -> BoxFuture<Result<U256>> {
         // get balance on special target.
 
-        Box::pin(async move { Ok(U256::default()) })
+        let state = self.main.read();
+
+        // TODO: use get_by_version to get special height.
+        let balance = if let Some(balance) = state.state.evm.OVRG.accounts.get(&address) {
+            balance.balance
+        } else {
+            U256::zero()
+        };
+
+        Box::pin(async move { Ok(balance) })
     }
 
     fn send_transaction(&self, _: TransactionRequest) -> BoxFuture<Result<H256>> {
@@ -39,7 +56,7 @@ impl EthApi for EthApiImpl {
     }
 
     fn call(&self, _: CallRequest, _: Option<BlockNumber>) -> BoxFuture<Result<Bytes>> {
-        // Call evm on new branch.
+        // Call evm on a new branch.
 
         Box::pin(async { Ok(Bytes::default()) })
     }
@@ -51,7 +68,8 @@ impl EthApi for EthApiImpl {
     }
 
     fn author(&self) -> BoxFuture<Result<H160>> {
-        // proposer
+        // current proposer
+
         Box::pin(async move { Ok(H160::default()) })
     }
 
@@ -62,9 +80,11 @@ impl EthApi for EthApiImpl {
     }
 
     fn gas_price(&self) -> BoxFuture<Result<U256>> {
-        // return current gas price
+        let state = self.main.read();
 
-        Box::pin(async move { Ok(U256::default()) })
+        let gas_price = state.state.evm.gas_price.get_value();
+
+        Box::pin(async move { Ok(gas_price) })
     }
 
     fn block_number(&self) -> BoxFuture<Result<U256>> {
