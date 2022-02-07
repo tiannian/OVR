@@ -15,5 +15,9 @@ fn main() {
         Commands::Debug(_cfg) => {
             todo!()
         }
+        #[cfg(target_os = "linux")]
+        Commands::Btm(_cfg) => {
+            todo!()
+        }
     }
 }

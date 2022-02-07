@@ -2,7 +2,9 @@ use clap::{Parser, Subcommand};
 
 #[cfg(target_os = "linux")]
 use {
-    btm::{SnapAlgo, SnapMode, ENV_VAR_BTM_TARGET},
+    crate::common::BlockHeight,
+    btm::{BtmCfg as BtmSysCfg, SnapAlgo, SnapMode, ENV_VAR_BTM_VOLUME},
+    ruc::*,
     std::env,
 };
 
@@ -13,7 +15,7 @@ pub struct Cfg {
     pub commands: Commands,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Debug, Subcommand)]
 pub enum Commands {
     #[clap(about = "Run ovr in daemon mode, aka run a node")]
     Daemon(DaemonCfg),
@@ -21,6 +23,9 @@ pub enum Commands {
     Client(ClientCfg),
     #[clap(about = "Use debug utils, eg, create a local env")]
     Debug(DebugCfg),
+    #[cfg(target_os = "linux")]
+    #[clap(about = "BTM related operations")]
+    Btm(BtmCfg),
 }
 
 #[derive(Clone, Debug, Parser)]
@@ -86,34 +91,43 @@ pub struct DaemonCfg {
     pub serv_mgmt_port: u16,
 
     #[cfg(target_os = "linux")]
-    #[clap(long)]
+    #[clap(long, help = "Global switch of btm functions")]
     pub btm_enable: bool,
 
     #[cfg(target_os = "linux")]
-    #[clap(long, default_value_t = 10)]
-    pub btm_itv: u64,
+    #[clap(short = 'P', long, help = "Will try ${ENV_VAR_BTM_VOLUME} if missing")]
+    pub btm_volume: Option<String>,
 
     #[cfg(target_os = "linux")]
-    #[clap(long, default_value_t = 100)]
-    pub btm_cap: u64,
-
-    #[cfg(target_os = "linux")]
-    #[clap(long, default_value_t = SnapMode::Zfs)]
-    pub btm_mode: SnapMode,
+    #[clap(
+        short = 'M',
+        long,
+        help = "Will try to detect the local system if missing"
+    )]
+    pub btm_mode: Option<SnapMode>,
 
     #[cfg(target_os = "linux")]
     #[clap(long, default_value_t = SnapAlgo::Fair)]
     pub btm_algo: SnapAlgo,
 
     #[cfg(target_os = "linux")]
-    #[clap(
-        long,
-        default_value_t = env::var(ENV_VAR_BTM_TARGET).unwrap_or("zfs/data".to_owned())
-    )]
-    pub btm_target: String,
+    #[clap(short = 'I', long, default_value_t = 10)]
+    pub btm_itv: u64,
+
+    #[cfg(target_os = "linux")]
+    #[clap(short = 'C', long, default_value_t = 100)]
+    pub btm_cap: u64,
 }
 
-#[derive(Parser, Debug)]
+#[cfg(target_os = "linux")]
+impl DaemonCfg {
+    #[inline(always)]
+    pub(crate) fn snapshot(&self, height: BlockHeight) -> Result<()> {
+        BtmSysCfg::try_from(self).c(d!())?.snapshot(height).c(d!())
+    }
+}
+
+#[derive(Debug, Parser)]
 pub struct ClientCfg {
     #[clap(
         short = 'a',
@@ -143,21 +157,100 @@ pub struct ClientCfg {
         help = "An UDP port used for system managements"
     )]
     pub serv_mgmt_port: u16,
-
-    #[cfg(target_os = "linux")]
-    #[clap(long)]
-    pub btm_list: bool,
-
-    #[cfg(target_os = "linux")]
-    #[clap(
-        long,
-        default_value_t = env::var(ENV_VAR_BTM_TARGET).unwrap_or("zfs/data".to_owned())
-    )]
-    pub btm_target: String,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Debug, Parser)]
 pub struct DebugCfg {
     #[clap(short, long)]
     pub env_name: u64,
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Debug, Parser)]
+pub struct BtmCfg {
+    #[clap(subcommand)]
+    commands: BtmOps,
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Debug, Subcommand)]
+enum BtmOps {
+    #[clap(about = "Rollback to a custom historical snapshot")]
+    Rollback(BtmRollbackArgs),
+    #[clap(about = "Clean up all existing snapshots")]
+    Clean(BtmCleanArgs),
+    #[clap(about = "List all existing snapshots")]
+    List(BtmListArgs),
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Parser, Debug)]
+struct BtmRollbackArgs {
+    #[clap(
+        short = 'P',
+        long,
+        help = "Will try to use ${ENV_VAR_BTM_VOLUME} if missing"
+    )]
+    pub volume: Option<String>,
+
+    #[clap(
+        short = 'H',
+        long,
+        help = "Will try to use the latest existing height if missing"
+    )]
+    pub height: Option<u64>,
+
+    #[clap(
+        short = 'X',
+        long,
+        help = "If specified, a snapshot must exist at the 'height'"
+    )]
+    pub exact: bool,
+
+    #[clap(
+        short = 'M',
+        long,
+        help = "Will try to detect the local system if missing"
+    )]
+    pub mode: Option<SnapMode>,
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Parser, Debug)]
+struct BtmCleanArgs {
+    #[clap(short = 'P', long, help = "Will try ${ENV_VAR_BTM_VOLUME} if missing")]
+    pub volume: Option<String>,
+
+    #[clap(
+        short = 'M',
+        long,
+        help = "Will try to detect the local system if missing"
+    )]
+    pub mode: Option<SnapMode>,
+}
+
+#[cfg(target_os = "linux")]
+type BtmListArgs = BtmCleanArgs;
+
+#[cfg(target_os = "linux")]
+impl TryFrom<&DaemonCfg> for BtmSysCfg {
+    type Error = Box<dyn RucError>;
+    fn try_from(dc: &DaemonCfg) -> Result<Self> {
+        let mut res = Self {
+            enable: dc.btm_enable,
+            itv: dc.btm_itv,
+            cap: dc.btm_cap,
+            mode: SnapMode::default(),
+            algo: dc.btm_algo,
+            volume: dc
+                .btm_volume
+                .clone()
+                .c(d!())
+                .or_else(|_| env::var(ENV_VAR_BTM_VOLUME).c(d!()))?,
+        };
+
+        res.mode = dc.btm_mode.c(d!()).or_else(|e| res.guess_mode().c(d!(e)))?;
+
+        Ok(res)
+    }
 }

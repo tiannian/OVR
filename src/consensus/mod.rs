@@ -52,11 +52,13 @@ impl App {
         }
     }
 
+    #[inline(always)]
     #[cfg(target_os = "linux")]
     fn btm_snapshot(&self, height: BlockHeight) -> Result<()> {
-        todo!()
+        self.cfg.snapshot(height).c(d!())
     }
 
+    #[inline(always)]
     #[cfg(not(target_os = "linux"))]
     fn btm_snapshot(&self, _: BlockHeight) -> Result<()> {
         Ok(())
