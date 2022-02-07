@@ -82,8 +82,12 @@ impl State {
 impl Default for State {
     fn default() -> Self {
         Self {
+            gas_price: OrphanVs::default(),
+            block_gas_limit: OrphanVs::default(),
+            block_base_fee_per_gas: OrphanVs::default(),
             OFUEL: Erc20Like::ofuel_token(),
-            ..Default::default()
+            block_hashes: MapxOrd::default(),
+            vicinity: OvrVicinity::default(),
         }
     }
 }

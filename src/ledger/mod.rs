@@ -21,6 +21,7 @@ use std::{fs, io::ErrorKind, mem, sync::Arc};
 use vsdb::{
     merkle::{MerkleTree, MerkleTreeStore},
     BranchName, MapxOrd, OrphanVs, ParentBranchName, ValueEn, Vs, VsMgmt,
+    INITIAL_VERSION,
 };
 
 const MAIN_BRANCH_NAME: BranchName = BranchName(b"Main");
@@ -28,7 +29,7 @@ const DELIVER_TX_BRANCH_NAME: BranchName = BranchName(b"DeliverTx");
 const CHECK_TX_BRANCH_NAME: BranchName = BranchName(b"CheckTx");
 
 static LEDGER_SNAPSHOT_PATH: Lazy<String> = Lazy::new(|| {
-    let dir = format!("{}/or/ledger", vsdb::vsdb_get_custom_dir());
+    let dir = format!("{}/overeality/ledger", vsdb::vsdb_get_custom_dir());
     pnk!(fs::create_dir_all(&dir));
     dir + "/ledger.json"
 });
@@ -52,35 +53,40 @@ impl Ledger {
         block_base_fee_per_gas: Option<u128>,
     ) -> Result<Self> {
         let mut state = State::default();
-        state.branch_create(MAIN_BRANCH_NAME).unwrap();
-        state.branch_set_default(MAIN_BRANCH_NAME).unwrap();
 
-        state.chain_id.set_value(chain_id).unwrap();
-        state.chain_name.set_value(chain_name).unwrap();
-        state.chain_version.set_value(chain_version).unwrap();
+        state.branch_create(MAIN_BRANCH_NAME).c(d!())?;
+        state.branch_set_default(MAIN_BRANCH_NAME).c(d!())?;
+
+        // ensure we have an initial version
+        state.version_create(INITIAL_VERSION).c(d!())?;
+
+        state.chain_id.set_value(chain_id).c(d!())?;
+        state.chain_name.set_value(chain_name).c(d!())?;
+        state.chain_version.set_value(chain_version).c(d!())?;
 
         state
             .evm
             .gas_price
             .set_value(gas_price.map(|v| v.into()).unwrap_or(*GAS_PRICE_MIN))
-            .unwrap();
+            .c(d!())?;
         state
             .evm
             .block_gas_limit
             .set_value(block_gas_limit.unwrap_or(u128::MAX).into())
-            .unwrap();
+            .c(d!())?;
         state
             .evm
             .block_base_fee_per_gas
             .set_value(block_base_fee_per_gas.unwrap_or_default().into())
-            .unwrap();
+            .c(d!())?;
 
         let main = StateBranch::new(&state, MAIN_BRANCH_NAME).c(d!())?;
+
+        state.branch_create(DELIVER_TX_BRANCH_NAME).c(d!())?;
+        state.branch_create(CHECK_TX_BRANCH_NAME).c(d!())?;
+
         let deliver_tx = StateBranch::new(&state, DELIVER_TX_BRANCH_NAME).c(d!())?;
         let check_tx = StateBranch::new(&state, CHECK_TX_BRANCH_NAME).c(d!())?;
-
-        state.branch_create(deliver_tx.branch_name()).unwrap();
-        state.branch_create(check_tx.branch_name()).unwrap();
 
         Ok(Self {
             state,
@@ -313,26 +319,21 @@ impl StateBranch {
     #[inline(always)]
     fn charge_fee(&self, caller: H160, amount: U256, b: BranchName) {
         alt!(amount.is_zero(), return);
-        let mut account = self
-            .state
-            .evm
-            .OFUEL
-            .accounts
-            .get_by_branch(&caller, b)
-            .unwrap();
+        let mut account = pnk!(self.state.evm.OFUEL.accounts.get_by_branch(&caller, b));
         account.balance = account.balance.saturating_sub(amount);
-        self.state
-            .evm
-            .OFUEL
-            .accounts
-            .insert_by_branch(caller, account, b)
-            .unwrap();
+        pnk!(
+            self.state
+                .evm
+                .OFUEL
+                .accounts
+                .insert_by_branch(caller, account, b)
+        );
     }
 
-    #[inline(always)]
-    fn branch_name(&self) -> BranchName {
-        self.branch.as_slice().into()
-    }
+    // #[inline(always)]
+    // fn branch_name(&self) -> BranchName {
+    //     self.branch.as_slice().into()
+    // }
 
     #[inline(always)]
     pub(crate) fn last_block(&self) -> Option<Block> {

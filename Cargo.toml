@@ -1,8 +1,8 @@
 [package]
 name = "ovr"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
-authors = ["fanhui.x@gmail.com"]
+authors = ["OVR development team", "fanhui.x@gmail.com"]
 description = "Official implementations of the Overeality project."
 homepage = "https://github.com/ccmlm/OVR"
 repository = "https://github.com/ccmlm/OVR"
@@ -15,8 +15,8 @@ path = "src/bins/ovr.rs"
 
 [dependencies]
 ruc = "1.0.2"
-btm = "0.2.1"
-vsdb = "0.13.3"
+btm = "0.3.4"
+vsdb = "0.14.3"
 
 clap = { version = "3.0.13", features = ["derive"] }
 once_cell = "1.9.0"

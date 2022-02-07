@@ -70,13 +70,12 @@ impl Erc20Like {
         issue_cap: Option<U256>,
         contract_addr: H160,
     ) -> Self {
-        let ver: &[u8; 0] = &[];
         Self {
             name,
             symbol,
             decimal,
             issue_cap,
-            total_supply: OrphanVs::new(ver[..].into(), 0u8.into()),
+            total_supply: OrphanVs::new(0u8.into()),
             accounts: MapxVs::new(),
             storages: MapxVs::new(),
             allowances: MapxVs::new(),
