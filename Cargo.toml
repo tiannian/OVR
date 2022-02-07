@@ -59,7 +59,7 @@ fevm-precompile-simple = { package = "pallet-evm-precompile-simple", git = "http
 
 precompile-utils = { git = "https://github.com/ccmlm/precompile_utils.git" }
 
-web3-rpc-core = { git = "https://github.com/FindoraNetwork/web3-rpc.git" }
+web3-rpc-core = { git = "https://github.com/ovr-defi/web3-rpc-core.git" }
 
 [dev-dependencies]
 criterion = { version = "0.3", features = ["html_reports"]}
