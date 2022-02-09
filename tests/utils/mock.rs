@@ -1,8 +1,49 @@
-use primitive_types::{U256, H256};
+use primitive_types::{U256, H256, H160};
 use ethereum::{TransactionAction, TransactionSignature, TransactionV0 as Transaction};
 use rlp::*;
 use sha3::{Digest, Keccak256};
-// use libsecp256k1::*;
+use ruc::*;
+use lazy_static::lazy_static;
+use std::sync::Mutex;
+use ovr::{App, Cfg, Commands};
+use clap::Parser;
+
+lazy_static! {
+    pub static ref APP: Mutex<App> = {
+        let cfg = Cfg::parse();
+
+        let mut m = None;
+        if let Commands::Daemon(cfg) = cfg.commands {
+            m = Some(Mutex::new(pnk!(App::new(cfg))));
+        }
+
+        return m.unwrap();
+    };
+
+    pub static ref ALICE_ECDSA: KeyPair = generate_address(1);
+    pub static ref BOB_ECDSA: KeyPair = generate_address(2);
+}
+
+pub struct KeyPair {
+    pub address: H160,
+    pub private_key: H256,
+    // pub account_id: Address,
+}
+
+pub fn generate_address(seed: u8) -> KeyPair {
+    let private_key = H256::from_slice(&[(seed + 1) as u8; 32]);
+    let secret_key = libsecp256k1::SecretKey::parse_slice(&private_key[..]).unwrap();
+    let public_key =
+        &libsecp256k1::PublicKey::from_secret_key(&secret_key).serialize()[1..65];
+    let address = H160::from(H256::from_slice(&Keccak256::digest(public_key)[..]));
+
+    KeyPair {
+        address,
+        private_key,
+        // account_id: EthereumAddressMapping::convert_to_account_id(address),
+    }
+}
+
 
 pub struct UnsignedTransaction {
     pub nonce: U256,
