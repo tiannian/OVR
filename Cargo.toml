@@ -58,8 +58,12 @@ fevm-precompile-simple = { package = "pallet-evm-precompile-simple", git = "http
 
 precompile-utils = { git = "https://github.com/ccmlm/precompile_utils.git" }
 
+hex = "0.4.2"
+libsecp256k1 = { version = "0.5", features = ["static-context", "hmac"] }
+
 [dev-dependencies]
 criterion = { version = "0.3", features = ["html_reports"]}
+ethabi = { git = "https://github.com/rust-ethereum/ethabi.git", branch = "master" }
 
 [[bench]]
 name = "_"
