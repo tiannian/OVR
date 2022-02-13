@@ -22,12 +22,12 @@ use vsdb::MapxOrd;
 #[derive(Clone)]
 pub struct App {
     ledger: Ledger,
-    cfg: Cfg,
+    pub cfg: Cfg,
 }
 
 impl App {
-    pub fn new(mut cfg: Cfg) -> Result<Self> {
-        if let Some(dir) = cfg.vsdb_base_dir.take() {
+    pub fn new(cfg: Cfg) -> Result<Self> {
+        if let Some(dir) = cfg.vsdb_base_dir.clone() {
             vsdb::vsdb_set_base_dir(dir).c(d!())?;
         }
 

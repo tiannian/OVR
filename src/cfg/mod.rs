@@ -21,8 +21,8 @@ pub enum Commands {
     Daemon(DaemonCfg),
     #[clap(about = "Run ovr in client mode, default option")]
     Client(ClientCfg),
-    #[clap(about = "Use debug utils, eg, create a local env")]
-    Debug(DebugCfg),
+    #[clap(about = "Development utils, create a local env, .etc")]
+    Dev(DevCfg),
     #[cfg(target_os = "linux")]
     #[clap(about = "BTM related operations")]
     Btm(BtmCfg),
@@ -32,7 +32,7 @@ pub enum Commands {
 pub struct DaemonCfg {
     #[clap(
         long,
-        default_value_t = 0,
+        default_value_t = 9527,
         help = "The ID of your chain, an unsigned integer"
     )]
     pub(crate) chain_id: u64,
@@ -62,7 +62,7 @@ pub struct DaemonCfg {
     pub(crate) block_base_fee_per_gas: Option<u128>,
 
     #[clap(
-        short = 'a',
+        short = 'A',
         long,
         default_value_t = ["[::]", "0.0.0.0"].join(","),
         help = "Addresses served by the daemon, seperated by ','"
@@ -89,13 +89,31 @@ pub struct DaemonCfg {
         help = "An UDP port used for system managements"
     )]
     pub serv_mgmt_port: u16,
+    #[clap(
+        short = 'a',
+        long,
+        default_value_t = 26658,
+        help = "the listening port of tendermint ABCI process(embed in ovr)"
+    )]
+    pub serv_abci_port: u16,
+    #[clap(
+        short = 'r',
+        long,
+        default_value_t = 26657,
+        help = "the listening port of tendermint RPC(embed in tendermint)"
+    )]
+    pub tm_rpc_port: u16,
 
     #[cfg(target_os = "linux")]
     #[clap(long, help = "Global switch of btm functions")]
     pub btm_enable: bool,
 
     #[cfg(target_os = "linux")]
-    #[clap(short = 'P', long, help = "Will try ${ENV_VAR_BTM_VOLUME} if missing")]
+    #[clap(
+        short = 'P',
+        long,
+        help = "Will try to use ${ENV_VAR_BTM_VOLUME} if missing"
+    )]
     pub btm_volume: Option<String>,
 
     #[cfg(target_os = "linux")]
@@ -130,7 +148,7 @@ impl DaemonCfg {
 #[derive(Debug, Parser)]
 pub struct ClientCfg {
     #[clap(
-        short = 'a',
+        short = 'A',
         long,
         default_value_t = String::from("localhost"),
         help = "Addresses served by the server end, defalt to 'localhost'"
@@ -160,9 +178,23 @@ pub struct ClientCfg {
 }
 
 #[derive(Debug, Parser)]
-pub struct DebugCfg {
-    #[clap(short, long)]
-    pub env_name: u64,
+pub struct DevCfg {
+    #[clap(short = 'E', long)]
+    pub env_name: String,
+    #[clap(short = 'c', long)]
+    pub env_create: bool,
+    #[clap(short = 'd', long)]
+    pub env_destroy: bool,
+    #[clap(short = 's', long)]
+    pub env_start: bool,
+    #[clap(short = 'S', long)]
+    pub env_stop: bool,
+    #[clap(short = 'a', long)]
+    pub env_add_node: bool,
+    #[clap(short = 'r', long)]
+    pub env_rm_node: bool,
+    #[clap(short = 'i', long)]
+    pub env_info: bool,
 }
 
 #[cfg(target_os = "linux")]
@@ -218,7 +250,11 @@ struct BtmRollbackArgs {
 #[cfg(target_os = "linux")]
 #[derive(Parser, Debug)]
 struct BtmCleanArgs {
-    #[clap(short = 'P', long, help = "Will try ${ENV_VAR_BTM_VOLUME} if missing")]
+    #[clap(
+        short = 'P',
+        long,
+        help = "Will try to use ${ENV_VAR_BTM_VOLUME} if missing"
+    )]
     pub volume: Option<String>,
 
     #[clap(

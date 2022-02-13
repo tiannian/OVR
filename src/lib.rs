@@ -1,4 +1,4 @@
-mod cfg;
+pub mod cfg;
 mod common;
 mod consensus;
 mod ethvm;

@@ -1,11 +1,28 @@
 ![GitHub top language](https://img.shields.io/github/languages/top/ccmlm/OVR)
-![GitHub Workflow Status](https://img.shields.io/github/workflow/status/ccmlm/OVR/Rust)
 ![GitHub issues](https://img.shields.io/github/issues-raw/ccmlm/OVR)
 ![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/ccmlm/OVR)
+![GitHub Workflow Status](https://img.shields.io/github/workflow/status/ccmlm/OVR/Rust)
 
 # OVR
 
 Overeality project.
+
+```
+===============================================================================
+ Language            Files        Lines         Code     Comments       Blanks
+===============================================================================
+ Makefile                1           38           29            0            9
+ Markdown                1          189            0          138           51
+ Shell                   1           51           36            7            8
+ TOML                    2           91           74            1           16
+-------------------------------------------------------------------------------
+ Rust                   20         3642         3023          175          444
+ |- Markdown            11           26            0           22            4
+ (Total)                           3668         3023          197          448
+===============================================================================
+ Total                  25         4011         3162          321          528
+===============================================================================
+```
 
 ## Usage
 
@@ -38,7 +55,10 @@ USAGE:
     ovr daemon [OPTIONS]
 
 OPTIONS:
-    -a, --serv-addr-list <SERV_ADDR_LIST>
+    -a, --serv-abci-port <SERV_ABCI_PORT>
+            the listening port of tendermint ABCI process(embed in ovr) [default: 26658]
+
+    -A, --serv-addr-list <SERV_ADDR_LIST>
             Addresses served by the daemon, seperated by ',' [default: [::],0.0.0.0]
 
         --block-base-fee-per-gas <BLOCK_BASE_FEE_PER_GAS>
@@ -50,11 +70,14 @@ OPTIONS:
         --btm-algo <BTM_ALGO>
             [default: Fair]
 
+        --btm-enable
+            Global switch of btm functions
+
     -C, --btm-cap <BTM_CAP>
             [default: 100]
 
         --chain-id <CHAIN_ID>
-            The ID of your chain, an unsigned integer [default: 0]
+            The ID of your chain, an unsigned integer [default: 9527]
 
         --chain-name <CHAIN_NAME>
             A custom name of your chain [default: NULL]
@@ -84,7 +107,10 @@ OPTIONS:
             A port used for http service [default: 30000]
 
     -P, --btm-volume <BTM_VOLUME>
-            Will try ${ENV_VAR_BTM_TARGET} if missing
+            Will try to use ${ENV_VAR_BTM_VOLUME} if missing
+
+    -r, --tm-rpc-port <TM_RPC_PORT>
+            the listening port of tendermint RPC(embed in tendermint) [default: 26657]
 
     -w, --serv-ws-port <SERV_WS_PORT>
             A port used for websocket service [default: 30001]
@@ -116,9 +142,27 @@ OPTIONS:
             A port used for websocket service [default: 30001]
 ```
 
-## Usage: `ovr debug`
+## Usage: `ovr dev`
 
-**TODO**
+```
+ovr-dev
+Development utils, create a local env, .etc
+
+USAGE:
+    ovr dev [OPTIONS] --env-name <ENV_NAME>
+
+OPTIONS:
+    -a, --env-add-node
+    -c, --env-create
+    -d, --env-destroy
+    -E, --env-name <ENV_NAME>
+    -h, --help                   Print help information
+    -i, --env-info
+    -r, --env-rm-node
+    -s, --env-start
+    -S, --env-stop
+
+```
 
 ## Usage: `ovr btm`
 
