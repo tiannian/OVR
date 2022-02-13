@@ -13,16 +13,6 @@ test:
 bench:
 	cargo bench
 
-build:
-	cargo build
-
-release:
-	if [[ "Linux" == `uname -s` ]]; then\
-	    cargo build --release --target=x86_64-unknown-linux-musl --bins;\
-	else\
-	    cargo build --release --bins;\
-	fi
-
 fmt:
 	bash tools/fmt.sh
 
@@ -36,3 +26,31 @@ update:
 
 doc:
 	cargo doc --open
+
+define pack
+	- rm -rf $(1)
+	mkdir $(1)
+	cp ./target/$(2)/$(1)/ovr \
+		$(shell go env GOPATH)/bin/tendermint \
+		$(1)/
+	cp $(1)/* ~/.cargo/bin/
+endef
+
+build: tendermint
+	cargo build --bins
+	$(call pack,debug)
+
+release: build_release
+
+build_release: tendermint
+	cargo build --release --bins
+	$(call pack,release)
+
+build_release_musl: tendermint
+	cargo build --release --bins --target=x86_64-unknown-linux-musl
+	$(call pack,release,x86_64-unknown-linux-musl)
+
+tendermint:
+	- rm $(shell which tendermint)
+	bash tools/download_tendermint.sh 'tools/tendermint'
+	cd tools/tendermint && $(MAKE) install
