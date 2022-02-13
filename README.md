@@ -97,9 +97,6 @@ OPTIONS:
     -I, --btm-itv <BTM_ITV>
             [default: 10]
 
-    -m, --serv-mgmt-port <SERV_MGMT_PORT>
-            An UDP port used for system managements [default: 9527]
-
     -M, --btm-mode <BTM_MODE>
             Will try to detect the local system if missing
 
@@ -132,9 +129,6 @@ OPTIONS:
     -h, --help
             Print help information
 
-    -m, --serv-mgmt-port <SERV_MGMT_PORT>
-            An UDP port used for system managements [default: 9527]
-
     -p, --serv-http-port <SERV_HTTP_PORT>
             A port used for http service [default: 30000]
 
@@ -155,7 +149,7 @@ OPTIONS:
     -a, --env-add-node
     -c, --env-create
     -d, --env-destroy
-    -E, --env-name <ENV_NAME>
+    -n, --env-name <ENV_NAME>
     -h, --help                   Print help information
     -i, --env-info
     -r, --env-rm-node

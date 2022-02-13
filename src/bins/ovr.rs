@@ -32,25 +32,22 @@ mod dev {
     //!
 
     use nix::{
-        sys::{
-            signal::{kill as nixkill, Signal},
-            socket::{
-                bind, setsockopt, socket, sockopt, AddressFamily, InetAddr, IpAddr,
-                SockAddr, SockFlag, SockType,
-            },
+        sys::socket::{
+            bind, setsockopt, socket, sockopt, AddressFamily, InetAddr, IpAddr,
+            SockAddr, SockFlag, SockType,
         },
-        unistd::{close, fork, ForkResult, Pid as NixPid},
+        unistd::{close, fork, ForkResult},
     };
-    use once_cell::sync::Lazy;
     use ovr::cfg::DevCfg;
     use ruc::{cmd, *};
     use serde::{Deserialize, Serialize};
     use serde_json::Value;
     use std::{
-        collections::BTreeMap,
+        collections::{BTreeMap, BTreeSet},
         fs,
+        io::ErrorKind,
         path::PathBuf,
-        process::{self, Command, Stdio},
+        process::{exit, Command, Stdio},
         str::FromStr,
     };
     use tendermint::{validator::Info as TmValidator, vote::Power as TmPower};
@@ -58,23 +55,19 @@ mod dev {
         PrivValidatorKey as TmValidatorKey, TendermintConfig as TmConfig,
     };
     use toml_edit::{value as toml_value, Document};
-    use vsdb::MapxOrd;
 
-    type Pid = i32;
     type NodeId = u32;
 
     const ENV_BASE_DIR: &str = "/tmp/__OVR_DEV__";
     const ENV_NAME_DEFAULT: &str = "default";
     const INIT_POWER: u32 = 1_0000_0000;
 
-    static PORT_DB: Lazy<MapxOrd<u16, ()>> = Lazy::new(MapxOrd::new);
-
     #[derive(Default)]
     pub struct EnvCfg {
         // the name of this env
-        pub name: String,
+        name: String,
         // which operation to trigger
-        pub ops: Ops,
+        ops: Ops,
     }
 
     impl From<DevCfg> for EnvCfg {
@@ -96,7 +89,7 @@ mod dev {
             };
 
             Self {
-                name: cfg.env_name,
+                name: cfg.env_name.unwrap_or_else(|| ENV_NAME_DEFAULT.to_owned()),
                 ops,
             }
         }
@@ -144,7 +137,7 @@ mod dev {
         genesis: Vec<u8>,
 
         seed_nodes: BTreeMap<NodeId, Node>,
-        pub full_nodes: BTreeMap<NodeId, Node>,
+        full_nodes: BTreeMap<NodeId, Node>,
         validator_nodes: BTreeMap<NodeId, Node>,
 
         // the latest/max id of current nodes
@@ -229,10 +222,9 @@ mod dev {
         // - stop all running processes
         // - delete the data of every nodes
         fn destroy(&self) -> Result<()> {
-            self.stop().c(d!()).and_then(|_| {
-                sleep_ms!(10);
-                fs::remove_dir_all(&self.home).c(d!())
-            })
+            info_omit!(self.stop());
+            sleep_ms!(10);
+            fs::remove_dir_all(&self.home).c(d!())
         }
 
         // seed nodes and full nodes are kept by system for now,
@@ -320,7 +312,6 @@ mod dev {
                 home: format!("{}/{}", &self.home, id),
                 kind,
                 ports,
-                ppid: 0, // will be set in the `start` method
             };
 
             match kind {
@@ -424,6 +415,7 @@ mod dev {
                 })
                 .and_then(|cfg| cfg.genesis_file.to_str().map(|f| f.to_owned()).c(d!()))
                 .and_then(gen)
+                .and_then(|_| fs::remove_dir_all(tmp_home).c(d!()))
         }
 
         // apply genesis to all nodes in the same env
@@ -486,13 +478,12 @@ mod dev {
     }
 
     #[derive(Debug, Clone, Deserialize, Serialize)]
-    pub struct Node {
+    struct Node {
         id: NodeId,
         tm_id: String,
         home: String,
         kind: Kind,
-        pub ports: Ports,
-        ppid: Pid,
+        ports: Ports,
     }
 
     impl Node {
@@ -501,60 +492,54 @@ mod dev {
         // - update meta
         fn start(&mut self) -> Result<()> {
             match unsafe { fork() } {
-                Ok(ForkResult::Parent { child, .. }) => {
-                    self.ppid = child.as_raw() as Pid;
-                    Ok(())
-                }
                 Ok(ForkResult::Child) => {
                     let cmd = format!(
-                        "
-                        cd {0} \
-                        && ovr daemon -a {1} -r {2} -p {3} -w {4} \
-                        && tendermint node --home {0}
-                        ",
+                        "cd {0} && ovr daemon -a {1} -r {2} -p {3} -w {4} -d {5} & tendermint node --home {0}",
                         &self.home,
                         self.ports.tm_abci,
                         self.ports.tm_rpc,
                         self.ports.web3_http,
-                        self.ports.web3_ws
+                        self.ports.web3_ws,
+                        self.vsdb_base_dir()
                     );
-                    Command::new("bash")
-                        .arg("-c")
-                        .arg(cmd)
-                        .stdin(Stdio::null())
-                        .stdout(Stdio::inherit())
-                        .stderr(Stdio::inherit())
-                        .spawn()
-                        .c(d!())?
-                        .wait()
-                        .c(d!())
-                        .map(|exit_status| println!("{}", exit_status))?;
-
-                    ctrlc::set_handler(move || {
-                        info_omit!(kill_grp());
-                    })
-                    .unwrap();
-
-                    process::exit(0);
+                    pnk!(exec_spawn(&cmd));
+                    exit(0);
                 }
+                Ok(_) => Ok(()),
                 Err(_) => Err(eg!("fork failed!")),
             }
         }
 
+        fn vsdb_base_dir(&self) -> String {
+            format!("{}/.vsdb", &self.home)
+        }
+
         fn stop(&self) -> Result<()> {
-            kill(self.ppid).c(d!()).map(|_| {
-                [
-                    self.ports.web3_http,
-                    self.ports.web3_ws,
-                    self.ports.tm_rpc,
-                    self.ports.tm_p2p,
-                    self.ports.tm_abci,
-                ]
-                .iter()
-                .for_each(|port| {
-                    PORT_DB.remove(port);
-                });
-            })
+            let cmd = format!(
+                "ps ax -o pid,args \
+                | grep '{}' \
+                | grep -v 'grep' \
+                | grep -Eo '^ *[0-9]+' \
+                | sed 's/ //g' \
+                | xargs kill -9",
+                &self.home
+            );
+
+            let outputs = cmd::exec_output(&cmd).c(d!())?;
+
+            println!("Cmd: {}\nOutputs: {}", cmd, outputs);
+
+            for port in [
+                self.ports.web3_http,
+                self.ports.web3_ws,
+                self.ports.tm_rpc,
+                self.ports.tm_p2p,
+                self.ports.tm_abci,
+            ] {
+                PortsCache::rm(port).c(d!())?;
+            }
+
+            Ok(())
         }
 
         fn delete(self) -> Result<()> {
@@ -570,7 +555,6 @@ mod dev {
                 home: "".to_owned(),
                 kind: Kind::Validator,
                 ports: Ports::default(),
-                ppid: 0,
             }
         }
     }
@@ -584,15 +568,15 @@ mod dev {
 
     /// Active ports of a node
     #[derive(Default, Debug, Clone, Deserialize, Serialize)]
-    pub struct Ports {
-        pub web3_http: u16,
-        pub web3_ws: u16,
+    struct Ports {
+        web3_http: u16,
+        web3_ws: u16,
         tm_p2p: u16,
-        pub tm_rpc: u16,
+        tm_rpc: u16,
         tm_abci: u16,
     }
 
-    pub enum Ops {
+    enum Ops {
         Create,
         Destroy,
         Start,
@@ -608,14 +592,6 @@ mod dev {
         }
     }
 
-    fn kill(pid: Pid) -> Result<()> {
-        nixkill(NixPid::from_raw(pid), Signal::SIGINT).c(d!())
-    }
-
-    fn kill_grp() -> Result<()> {
-        nixkill(NixPid::from_raw(0), Signal::SIGKILL).c(d!())
-    }
-
     // global alloctor for ports
     fn alloc_ports(node_kind: &Kind, env_name: &str) -> Result<Ports> {
         // web3_http, web3_ws, tm p2p, tm rpc, tm tm_abci
@@ -629,7 +605,7 @@ mod dev {
             while RESERVED_PORTS.len() > res.len() {
                 let p = 20000 + rand::random::<u16>() % (65535 - 20000);
                 if !RESERVED_PORTS.contains(&p)
-                    && PORT_DB.get(&p).is_none()
+                    && !PortsCache::contains(p).c(d!())?
                     && port_is_free(p)
                 {
                     res.push(p);
@@ -638,6 +614,8 @@ mod dev {
                 alt!(0 == cnter, return Err(eg!("ports can not be allocated")))
             }
         }
+
+        PortsCache::set(res.as_slice()).c(d!())?;
 
         Ok(Ports {
             web3_http: res[0],
@@ -672,5 +650,75 @@ mod dev {
                 .c(d!())
             })
             .and_then(|_| close(fd).c(d!()))
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    struct PortsCache {
+        file_path: String,
+        port_set: BTreeSet<u16>,
+    }
+
+    impl PortsCache {
+        fn new() -> Self {
+            Self {
+                file_path: Self::file_path(),
+                port_set: BTreeSet::new(),
+            }
+        }
+
+        fn file_path() -> String {
+            format!("{}/ports_cache", ENV_BASE_DIR)
+        }
+
+        fn load() -> Result<Self> {
+            match fs::read_to_string(Self::file_path()) {
+                Ok(c) => serde_json::from_str(&c).c(d!()),
+                Err(e) => {
+                    if ErrorKind::NotFound == e.kind() {
+                        Ok(Self::new())
+                    } else {
+                        Err(e).c(d!())
+                    }
+                }
+            }
+        }
+
+        fn write(&self) -> Result<()> {
+            serde_json::to_string(self)
+                .c(d!())
+                .and_then(|c| fs::write(&self.file_path, c).c(d!()))
+        }
+
+        fn contains(port: u16) -> Result<bool> {
+            Self::load().c(d!()).map(|i| i.port_set.contains(&port))
+        }
+
+        fn set(ports: &[u16]) -> Result<()> {
+            let mut i = Self::load().c(d!())?;
+            for p in ports {
+                i.port_set.insert(*p);
+            }
+            i.write().c(d!())
+        }
+
+        fn rm(port: u16) -> Result<()> {
+            let mut i = Self::load().c(d!())?;
+            i.port_set.remove(&port);
+            i.write().c(d!())
+        }
+    }
+
+    fn exec_spawn(cmd: &str) -> Result<()> {
+        Command::new("bash")
+            .arg("-c")
+            .arg(cmd)
+            .stdin(Stdio::null())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .c(d!())?
+            .wait()
+            .c(d!())
+            .map(|exit_status| println!("{}", exit_status))
     }
 }

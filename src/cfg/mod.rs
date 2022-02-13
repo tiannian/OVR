@@ -83,13 +83,6 @@ pub struct DaemonCfg {
     )]
     pub serv_ws_port: u16,
     #[clap(
-        short = 'm',
-        long,
-        default_value_t = 9527,
-        help = "An UDP port used for system managements"
-    )]
-    pub serv_mgmt_port: u16,
-    #[clap(
         short = 'a',
         long,
         default_value_t = 26658,
@@ -168,19 +161,12 @@ pub struct ClientCfg {
         help = "A port used for websocket service"
     )]
     pub serv_ws_port: u16,
-    #[clap(
-        short = 'm',
-        long,
-        default_value_t = 9527,
-        help = "An UDP port used for system managements"
-    )]
-    pub serv_mgmt_port: u16,
 }
 
 #[derive(Debug, Parser)]
 pub struct DevCfg {
-    #[clap(short = 'E', long)]
-    pub env_name: String,
+    #[clap(short = 'n', long)]
+    pub env_name: Option<String>,
     #[clap(short = 'c', long)]
     pub env_create: bool,
     #[clap(short = 'd', long)]

@@ -29,6 +29,7 @@ doc:
 
 define pack
 	- rm -rf $(1)
+	- rm ~/.cargo/bin/{ovr,tendermint}
 	mkdir $(1)
 	cp ./target/$(2)/$(1)/ovr \
 		$(shell go env GOPATH)/bin/tendermint \

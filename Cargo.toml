@@ -14,7 +14,7 @@ name = "ovr"
 path = "src/bins/ovr.rs"
 
 [dependencies]
-ruc = "1.0.4"
+ruc = { version = "1.0.4", features = ["cmd"] }
 btm = "0.5.0"
 vsdb = "0.14.5"
 
