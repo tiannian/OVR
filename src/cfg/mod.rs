@@ -1,10 +1,10 @@
 use clap::{Parser, Subcommand};
+use ruc::*;
 
 #[cfg(target_os = "linux")]
 use {
     crate::common::BlockHeight,
     btm::{BtmCfg as BtmSysCfg, SnapAlgo, SnapMode, ENV_VAR_BTM_VOLUME},
-    ruc::*,
     std::env,
 };
 
@@ -130,11 +130,19 @@ pub struct DaemonCfg {
     pub btm_cap: u64,
 }
 
-#[cfg(target_os = "linux")]
 impl DaemonCfg {
     #[inline(always)]
+    #[cfg(target_os = "linux")]
     pub(crate) fn snapshot(&self, height: BlockHeight) -> Result<()> {
         BtmSysCfg::try_from(self).c(d!())?.snapshot(height).c(d!())
+    }
+
+    #[inline(always)]
+    pub(crate) fn set_vsdb_base_dir(&self) -> Result<()> {
+        if let Some(dir) = self.vsdb_base_dir.clone() {
+            vsdb::vsdb_set_base_dir(dir).c(d!())?;
+        }
+        Ok(())
     }
 }
 
@@ -181,6 +189,8 @@ pub struct DevCfg {
     pub env_rm_node: bool,
     #[clap(short = 'i', long)]
     pub env_info: bool,
+    #[clap(short = 'I', long, default_value_t = 1)]
+    pub block_itv_secs: u8,
 }
 
 #[cfg(target_os = "linux")]

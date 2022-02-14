@@ -1,6 +1,6 @@
 [package]
 name = "ovr"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2021"
 authors = ["OVR development team", "fanhui.x@gmail.com"]
 description = "Official implementations of the Overeality project."
@@ -11,12 +11,12 @@ license = "MIT"
 
 [[bin]]
 name = "ovr"
-path = "src/bins/ovr.rs"
+path = "src/bins/ovr/main.rs"
 
 [dependencies]
 ruc = { version = "1.0.4", features = ["cmd"] }
 btm = "0.5.0"
-vsdb = "0.14.5"
+vsdb = "0.14.6"
 
 clap = { version = "3.0.13", features = ["derive"] }
 nix = "0.23.1"

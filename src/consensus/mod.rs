@@ -26,11 +26,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(cfg: Cfg) -> Result<Self> {
-        if let Some(dir) = cfg.vsdb_base_dir.clone() {
-            vsdb::vsdb_set_base_dir(dir).c(d!())?;
-        }
-
+    fn new(cfg: Cfg) -> Result<Self> {
         let ledger = Ledger::new(
             cfg.chain_id,
             cfg.chain_name.clone(),
@@ -45,6 +41,8 @@ impl App {
     }
 
     pub fn load_or_create(cfg: Cfg) -> Result<Self> {
+        cfg.set_vsdb_base_dir().c(d!())?;
+
         if let Some(ledger) = Ledger::load_from_snapshot().c(d!())? {
             Ok(Self { ledger, cfg })
         } else {

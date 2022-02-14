@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::{fs, io::ErrorKind, mem, sync::Arc};
 use vsdb::{
     merkle::{MerkleTree, MerkleTreeStore},
-    BranchName, MapxOrd, OrphanVs, ParentBranchName, ValueEn, Vs, VsMgmt,
+    BranchName, MapxOrd, OrphanVs, ParentBranchName, ValueEn, ValueEnDe, Vs, VsMgmt,
     INITIAL_VERSION,
 };
 
@@ -102,7 +102,7 @@ impl Ledger {
         proposer: TmAddress,
         timestamp: u64,
     ) -> Result<()> {
-        self.refresh_inner(proposer, timestamp, false)
+        self.refresh_inner(proposer, timestamp, false).c(d!())
     }
 
     #[inline(always)]
@@ -198,10 +198,8 @@ impl StateBranch {
         self.tx_hashes_in_process.clear();
 
         let (h, prev_hash) = self
-            .state
-            .blocks
-            .last()
-            .map(|(h, b)| (h, b.header_hash))
+            .last_block()
+            .map(|b| (b.header.height, b.header_hash))
             .unwrap_or_default();
         self.block_in_process = Block::new(1 + h, proposer, timestamp, prev_hash);
 
@@ -283,9 +281,7 @@ impl StateBranch {
         self.block_in_process.header.tx_merkle.root_hash = root;
         self.block_in_process.header_hash = self.block_in_process.header.hash();
 
-        let mut empty_block = Block::default();
-        mem::swap(&mut empty_block, &mut self.block_in_process);
-        let block = empty_block;
+        let block = mem::take(&mut self.block_in_process);
 
         self.state.evm.block_hashes.insert(
             block.header.height,
@@ -352,8 +348,8 @@ impl StateBranch {
 
     #[inline(always)]
     fn load_from_snapshot() -> Result<Option<Self>> {
-        match fs::read_to_string(&*LEDGER_SNAPSHOT_PATH) {
-            Ok(c) => serde_json::from_str::<StateBranch>(&c).c(d!()).map(Some),
+        match fs::read(&*LEDGER_SNAPSHOT_PATH) {
+            Ok(c) => StateBranch::decode(c.as_slice()).c(d!()).map(Some),
             Err(e) => {
                 if let ErrorKind::NotFound = e.kind() {
                     Ok(None)
@@ -366,14 +362,13 @@ impl StateBranch {
 
     #[inline(always)]
     fn write_snapshot(&self) -> Result<()> {
-        let contents = serde_json::to_string_pretty(self).c(d!())?;
+        let contents = self.encode();
         fs::write(&*LEDGER_SNAPSHOT_PATH, &contents).c(d!())
     }
 
     #[inline(always)]
     fn clean_cache(&mut self) {
         self.tx_hashes_in_process.clear();
-        self.block_in_process = Block::default();
     }
 }
 
@@ -480,7 +475,7 @@ pub(crate) struct TxMerkle {
     pub(crate) tree: MerkleTreeStore,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct VsVersion {
     block_height: u64,
     // NOTE:
