@@ -19,7 +19,6 @@ use sha3::{Digest, Keccak256};
 use std::{collections::BTreeMap, fmt, result::Result as StdResult};
 use vsdb::BranchName;
 
-static EVM_CFG: Lazy<EvmCfg> = Lazy::new(EvmCfg::istanbul);
 pub(crate) static GAS_PRICE_MIN: Lazy<U256> = Lazy::new(|| U256::from(10u8));
 
 type GasPrice = U256;
@@ -36,9 +35,10 @@ impl Tx {
         self,
         sb: &mut StateBranch,
         b: BranchName,
+        estimate: bool,
     ) -> StdResult<ExecRet, Option<ExecRet>> {
         if let Ok((addr, _, gas_price)) = info!(self.pre_exec(sb, b)) {
-            let ret = self.exec(addr, gas_price, sb, b);
+            let ret = self.exec(addr, gas_price, sb, b, estimate);
             alt!(ret.success, Ok(ret), Err(Some(ret)))
         } else {
             Err(None)
@@ -92,14 +92,18 @@ impl Tx {
         gas_price: GasPrice,
         sb: &mut StateBranch,
         b: BranchName,
+        estimate: bool,
     ) -> ExecRet {
-        let metadata = StackSubstateMetadata::new(u64::MAX, &EVM_CFG);
+        let mut evm_cfg = EvmCfg::istanbul();
+        alt!(estimate, evm_cfg.estimate = true);
+
+        let metadata = StackSubstateMetadata::new(u64::MAX, &evm_cfg);
         let mut backend = sb.state.evm.get_backend_hdr(b);
         let state = OvrStackState::new(metadata, &backend);
 
         let precompiles = PRECOMPILE_SET.clone();
         let mut executor =
-            StackExecutor::new_with_precompiles(state, &EVM_CFG, &precompiles);
+            StackExecutor::new_with_precompiles(state, &evm_cfg, &precompiles);
 
         enum Ret {
             Precompile(StdResult<PrecompileOutput, PrecompileFailure>),

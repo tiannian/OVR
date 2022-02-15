@@ -63,7 +63,13 @@ fevm-precompile-sha3fips = { package = "pallet-evm-precompile-sha3fips", git = "
 fevm-precompile-simple = { package = "pallet-evm-precompile-simple", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
 # fevm-precompile-dispatch = { package = "pallet-evm-precompile-dispatch", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
 
+# deps of web3-rpc
 precompile-utils = { git = "https://github.com/ccmlm/precompile_utils.git" }
+f-rpc-core = { package = "fp-rpc-core", git = "https://github.com/ccmlm/platform.git", branch = "web3-rpc" }
+f-rpc-server = { package = "fp-rpc-server", git = "https://github.com/ccmlm/platform.git", branch = "web3-rpc"}
+f-utils = { package = "fp-utils", git = "https://github.com/ccmlm/platform.git", branch = "web3-rpc"}
+rustc-hex = "2.1.0"
+log = "0.4.14"
 
 [dev-dependencies]
 criterion = { version = "0.3", features = ["html_reports"]}

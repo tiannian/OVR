@@ -17,10 +17,10 @@ pub struct Cfg {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
+    #[clap(about = "Run ovr in client mode")]
+    Cli(CliCfg),
     #[clap(about = "Run ovr in daemon mode, aka run a node")]
     Daemon(DaemonCfg),
-    #[clap(about = "Run ovr in client mode, default option")]
-    Client(ClientCfg),
     #[clap(about = "Development utils, create a local env, .etc")]
     Dev(DevCfg),
     #[cfg(target_os = "linux")]
@@ -71,15 +71,15 @@ pub struct DaemonCfg {
     #[clap(
         short = 'p',
         long,
-        default_value_t = 30000,
-        help = "A port used for http service"
+        default_value_t = 8545,
+        help = "Http service, a value of zero means disable the service"
     )]
     pub serv_http_port: u16,
     #[clap(
         short = 'w',
         long,
-        default_value_t = 30001,
-        help = "A port used for websocket service"
+        default_value_t = 8546,
+        help = "Websocket service, a value of zero means disable the service"
     )]
     pub serv_ws_port: u16,
     #[clap(
@@ -90,12 +90,12 @@ pub struct DaemonCfg {
     )]
     pub serv_abci_port: u16,
     #[clap(
-        short = 'r',
+        short = 'T',
         long,
         default_value_t = 26657,
         help = "the listening port of tendermint RPC(embed in tendermint)"
     )]
-    pub tm_rpc_port: u16,
+    pub tendermint_rpc_port: u16,
 
     #[cfg(target_os = "linux")]
     #[clap(long, help = "Global switch of snapshot functions")]
@@ -147,25 +147,25 @@ impl DaemonCfg {
 }
 
 #[derive(Debug, Parser)]
-pub struct ClientCfg {
+pub struct CliCfg {
     #[clap(
         short = 'A',
         long,
         default_value_t = String::from("localhost"),
-        help = "Addresses served by the server end, defalt to 'localhost'"
+        help = "Addresses served by the server end"
     )]
     pub serv_addr: String,
     #[clap(
         short = 'p',
         long,
-        default_value_t = 30000,
+        default_value_t = 8545,
         help = "A port used for http service"
     )]
     pub serv_http_port: u16,
     #[clap(
         short = 'w',
         long,
-        default_value_t = 30001,
+        default_value_t = 8546,
         help = "A port used for websocket service"
     )]
     pub serv_ws_port: u16,

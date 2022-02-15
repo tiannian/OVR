@@ -1,5 +1,9 @@
 use abci::ServerBuilder;
-use ovr::{cfg::DaemonCfg, App};
+use ovr::{
+    cfg::DaemonCfg,
+    rpc::{self, HttpServer, WsServer},
+    App,
+};
 use ruc::*;
 use std::net::SocketAddr;
 
@@ -9,8 +13,7 @@ const BUF_SIZ: usize = 128 * MB;
 pub fn start(cfg: DaemonCfg) -> Result<()> {
     let app = App::load_or_create(cfg).c(d!())?;
 
-    start_web3_http_server(&app).c(d!())?;
-    start_web3_http_ws(&app).c(d!())?;
+    start_web3_service(&app).c(d!())?;
 
     let addr_list = app
         .cfg
@@ -31,12 +34,27 @@ pub fn start(cfg: DaemonCfg) -> Result<()> {
     s.listen().c(d!())
 }
 
-fn start_web3_http_server(_app: &App) -> Result<()> {
-    // TODO
-    Ok(())
-}
+fn start_web3_service(app: &App) -> Result<(Vec<HttpServer>, Vec<WsServer>)> {
+    let (http_serv_list, ws_serv_list): (Vec<_>, Vec<_>) = app
+        .cfg
+        .serv_addr_list
+        .split(',')
+        .map(|addr| {
+            (
+                format!("{}:{}", addr, app.cfg.serv_http_port),
+                format!("{}:{}", addr, app.cfg.serv_ws_port),
+            )
+        })
+        .unzip();
 
-fn start_web3_http_ws(_app: &App) -> Result<()> {
-    // TODO
-    Ok(())
+    let http_serv_list = http_serv_list
+        .into_iter()
+        .map(|addr| addr.parse::<SocketAddr>().c(d!()))
+        .collect::<Result<Vec<_>>>()?;
+    let ws_serv_list = ws_serv_list
+        .iter()
+        .map(|addr| addr.parse::<SocketAddr>().c(d!()))
+        .collect::<Result<Vec<_>>>()?;
+
+    rpc::start_web3_service(&http_serv_list, &ws_serv_list).c(d!())
 }

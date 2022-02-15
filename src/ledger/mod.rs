@@ -234,7 +234,7 @@ impl StateBranch {
 
         match tx {
             Tx::Evm(tx) => tx
-                .apply(self, b)
+                .apply(self, b, false)
                 .map(|ret| {
                     self.charge_fee(ret.caller, ret.fee_used, b);
                     self.tx_hashes_in_process.push(tx_hash);

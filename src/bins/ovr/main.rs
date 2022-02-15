@@ -13,15 +13,16 @@ fn main() {
     let config = Cfg::parse();
 
     match config.commands {
+        Commands::Cli(_cfg) => {
+            todo!()
+        }
         Commands::Daemon(cfg) => {
             pnk!(daemon::start(cfg));
-        }
-        Commands::Client(_cfg) => {
-            todo!()
         }
         Commands::Dev(cfg) => {
             pnk!(dev::EnvCfg::from(cfg).exec());
         }
+
         #[cfg(target_os = "linux")]
         Commands::Snap(cfg) => {
             pnk!(snapshot::exec(cfg));
