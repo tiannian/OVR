@@ -150,7 +150,7 @@ impl Env {
         add_initial_nodes!(Seed);
         add_initial_nodes!(Full);
         for _ in 0..3 {
-            add_initial_nodes!(Validator);
+            add_initial_nodes!(Node);
         }
 
         env.gen_genesis()
@@ -215,7 +215,7 @@ impl Env {
     // so only the validator nodes can be added on demand
     fn attach_node(&mut self) -> Result<()> {
         let id = self.next_node_id();
-        let kind = Kind::Validator;
+        let kind = Kind::Node;
         self.alloc_resources(id, kind)
             .c(d!())
             .and_then(|_| self.apply_genesis(Some(id)).c(d!()))
@@ -225,11 +225,13 @@ impl Env {
     fn kick_node(&mut self) -> Result<()> {
         self.validator_nodes
             .keys()
+            .rev()
             .copied()
             .next()
             .c(d!())
             .and_then(|k| self.validator_nodes.remove(&k).c(d!()))
             .and_then(|n| n.stop().c(d!()).and_then(|_| n.delete().c(d!())))
+            .and_then(|_| self.write_cfg().c(d!()))
     }
 
     // 1. allocate ports
@@ -295,7 +297,7 @@ impl Env {
         };
 
         match kind {
-            Kind::Validator => self.validator_nodes.insert(id, node),
+            Kind::Node => self.validator_nodes.insert(id, node),
             Kind::Full => self.full_nodes.insert(id, node),
             Kind::Seed => self.seed_nodes.insert(id, node),
         };
@@ -465,7 +467,10 @@ impl Node {
         match unsafe { fork() } {
             Ok(ForkResult::Child) => {
                 let cmd = format!(
-                    "cd {0} && ovr daemon -a {1} -r {2} -p {3} -w {4} -d {5} & tendermint node --home {0}",
+                    r"
+                    ovr daemon -a {1} -r {2} -p {3} -w {4} -d {5} >{0}/app.log 2>&1 & \
+                    tendermint node --home {0} >{0}/tendermint.log 2>&1
+                    ",
                     &self.home,
                     self.ports.tm_abci,
                     self.ports.tm_rpc,
@@ -482,7 +487,7 @@ impl Node {
     }
 
     fn vsdb_base_dir(&self) -> String {
-        format!("{}/.vsdb", &self.home)
+        format!("{}/__vsdb__", &self.home)
     }
 
     fn stop(&self) -> Result<()> {
@@ -498,7 +503,11 @@ impl Node {
 
         let outputs = cmd::exec_output(&cmd).c(d!())?;
 
-        println!("Cmd: {}\nOutputs: {}", cmd, outputs);
+        println!("\x1b[31;1mCommands:\x1b[0m {}", cmd);
+        println!(
+            "\x1b[31;1mOutputs:\x1b[0m {}",
+            alt!(outputs.is_empty(), "...", outputs.as_str())
+        );
 
         for port in [
             self.ports.web3_http,
@@ -524,7 +533,7 @@ impl Default for Node {
             id: 0,
             tm_id: "".to_owned(),
             home: "".to_owned(),
-            kind: Kind::Validator,
+            kind: Kind::Node,
             ports: Ports::default(),
         }
     }
@@ -532,7 +541,7 @@ impl Default for Node {
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 enum Kind {
-    Validator,
+    Node,
     Full,
     Seed,
 }

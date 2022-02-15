@@ -27,7 +27,7 @@ ovr dev --env-destroy
 Top-level overview:
 
 ```
-ovr 0.2.0
+ovr 0.2.1
 OVR development team, fanhui.x@gmail.com
 Official implementations of the Overeality project.
 
