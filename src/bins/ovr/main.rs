@@ -2,15 +2,17 @@ use clap::Parser;
 use ovr::{Cfg, Commands};
 use ruc::*;
 
-mod btm;
 mod client;
 mod daemon;
 mod dev;
 
-fn main() {
-    let cfg = Cfg::parse();
+#[cfg(target_os = "linux")]
+mod snapshot;
 
-    match cfg.commands {
+fn main() {
+    let config = Cfg::parse();
+
+    match config.commands {
         Commands::Daemon(cfg) => {
             pnk!(daemon::start(cfg));
         }
@@ -21,8 +23,8 @@ fn main() {
             pnk!(dev::EnvCfg::from(cfg).exec());
         }
         #[cfg(target_os = "linux")]
-        Commands::Btm(_cfg) => {
-            todo!()
+        Commands::Snap(cfg) => {
+            pnk!(snapshot::exec(cfg));
         }
     }
 }

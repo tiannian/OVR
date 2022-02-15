@@ -4,7 +4,7 @@ use ruc::*;
 #[cfg(target_os = "linux")]
 use {
     crate::common::BlockHeight,
-    btm::{BtmCfg as BtmSysCfg, SnapAlgo, SnapMode, ENV_VAR_BTM_VOLUME},
+    btm::{BtmCfg, SnapAlgo, SnapMode, ENV_VAR_BTM_VOLUME},
     std::env,
 };
 
@@ -25,7 +25,7 @@ pub enum Commands {
     Dev(DevCfg),
     #[cfg(target_os = "linux")]
     #[clap(about = "BTM related operations")]
-    Btm(BtmCfg),
+    Snap(SnapCfg),
 }
 
 #[derive(Clone, Debug, Parser)]
@@ -98,8 +98,8 @@ pub struct DaemonCfg {
     pub tm_rpc_port: u16,
 
     #[cfg(target_os = "linux")]
-    #[clap(long, help = "Global switch of btm functions")]
-    pub btm_enable: bool,
+    #[clap(long, help = "Global switch of snapshot functions")]
+    pub snap_enable: bool,
 
     #[cfg(target_os = "linux")]
     #[clap(
@@ -107,7 +107,7 @@ pub struct DaemonCfg {
         long,
         help = "Will try to use ${ENV_VAR_BTM_VOLUME} if missing"
     )]
-    pub btm_volume: Option<String>,
+    pub snap_volume: Option<String>,
 
     #[cfg(target_os = "linux")]
     #[clap(
@@ -115,26 +115,26 @@ pub struct DaemonCfg {
         long,
         help = "Will try to detect the local system if missing"
     )]
-    pub btm_mode: Option<SnapMode>,
+    pub snap_mode: Option<SnapMode>,
 
     #[cfg(target_os = "linux")]
     #[clap(long, default_value_t = SnapAlgo::Fair)]
-    pub btm_algo: SnapAlgo,
+    pub snap_algo: SnapAlgo,
 
     #[cfg(target_os = "linux")]
     #[clap(short = 'I', long, default_value_t = 10)]
-    pub btm_itv: u64,
+    pub snap_itv: u64,
 
     #[cfg(target_os = "linux")]
     #[clap(short = 'C', long, default_value_t = 100)]
-    pub btm_cap: u64,
+    pub snap_cap: u64,
 }
 
 impl DaemonCfg {
     #[inline(always)]
     #[cfg(target_os = "linux")]
     pub(crate) fn snapshot(&self, height: BlockHeight) -> Result<()> {
-        BtmSysCfg::try_from(self).c(d!())?.snapshot(height).c(d!())
+        BtmCfg::try_from(self).c(d!())?.snapshot(height).c(d!())
     }
 
     #[inline(always)]
@@ -195,25 +195,25 @@ pub struct DevCfg {
 
 #[cfg(target_os = "linux")]
 #[derive(Debug, Parser)]
-pub struct BtmCfg {
+pub struct SnapCfg {
     #[clap(subcommand)]
-    commands: BtmOps,
+    pub commands: SnapOps,
 }
 
 #[cfg(target_os = "linux")]
 #[derive(Debug, Subcommand)]
-enum BtmOps {
+pub enum SnapOps {
     #[clap(about = "Rollback to a custom historical snapshot")]
-    Rollback(BtmRollbackArgs),
+    Rollback(SnapRollbackArgs),
     #[clap(about = "Clean up all existing snapshots")]
-    Clean(BtmCleanArgs),
+    Clean(SnapCleanArgs),
     #[clap(about = "List all existing snapshots")]
-    List(BtmListArgs),
+    List(SnapListArgs),
 }
 
 #[cfg(target_os = "linux")]
 #[derive(Parser, Debug)]
-struct BtmRollbackArgs {
+pub struct SnapRollbackArgs {
     #[clap(
         short = 'P',
         long,
@@ -245,7 +245,7 @@ struct BtmRollbackArgs {
 
 #[cfg(target_os = "linux")]
 #[derive(Parser, Debug)]
-struct BtmCleanArgs {
+pub struct SnapCleanArgs {
     #[clap(
         short = 'P',
         long,
@@ -262,27 +262,70 @@ struct BtmCleanArgs {
 }
 
 #[cfg(target_os = "linux")]
-type BtmListArgs = BtmCleanArgs;
+type SnapListArgs = SnapCleanArgs;
 
 #[cfg(target_os = "linux")]
-impl TryFrom<&DaemonCfg> for BtmSysCfg {
+impl TryFrom<&DaemonCfg> for BtmCfg {
     type Error = Box<dyn RucError>;
+
     fn try_from(dc: &DaemonCfg) -> Result<Self> {
-        let mut res = Self {
-            enable: dc.btm_enable,
-            itv: dc.btm_itv,
-            cap: dc.btm_cap,
-            mode: SnapMode::default(),
-            algo: dc.btm_algo,
-            volume: dc
-                .btm_volume
-                .clone()
-                .c(d!())
-                .or_else(|_| env::var(ENV_VAR_BTM_VOLUME).c(d!()))?,
+        let volume = dc
+            .snap_volume
+            .clone()
+            .c(d!())
+            .or_else(|_| env::var(ENV_VAR_BTM_VOLUME).c(d!()))?;
+        let mode = dc
+            .snap_mode
+            .c(d!())
+            .or_else(|e| Self::guess_mode(&volume).c(d!(e)))?;
+        Ok(Self {
+            enable: dc.snap_enable,
+            itv: dc.snap_itv,
+            cap: dc.snap_cap,
+            mode,
+            algo: dc.snap_algo,
+            volume,
+        })
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl TryFrom<&SnapCfg> for BtmCfg {
+    type Error = Box<dyn RucError>;
+
+    fn try_from(sc: &SnapCfg) -> Result<Self> {
+        macro_rules! parse_args {
+            ($args: expr) => {{
+                let volume = $args
+                    .volume
+                    .clone()
+                    .c(d!())
+                    .or_else(|_| env::var(ENV_VAR_BTM_VOLUME).c(d!()))?;
+                let mode = $args
+                    .mode
+                    .c(d!())
+                    .or_else(|e| Self::guess_mode(&volume).c(d!(e)))?;
+                (volume, mode)
+            }};
+        }
+
+        let (volume, mode) = match &sc.commands {
+            SnapOps::List(args) => {
+                parse_args!(args)
+            }
+            SnapOps::Clean(args) => {
+                parse_args!(args)
+            }
+            SnapOps::Rollback(args) => {
+                parse_args!(args)
+            }
         };
 
-        res.mode = dc.btm_mode.c(d!()).or_else(|e| res.guess_mode().c(d!(e)))?;
-
-        Ok(res)
+        Ok(Self {
+            enable: true,
+            mode,
+            volume,
+            ..Default::default()
+        })
     }
 }
