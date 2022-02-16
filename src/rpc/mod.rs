@@ -38,6 +38,7 @@ pub fn start_web3_service(
     let http_hdrs = http_serv_list
         .into_iter()
         .map(|addr| {
+            println!("*** Web3-http serve at {} ***", addr);
             start_http(addr, None, Some(&vec!["*".to_string()]), io(), None)
                 .c(d!("Unable to start web3 http service"))
                 .map(|s| HttpServer(Some(s)))
@@ -47,6 +48,7 @@ pub fn start_web3_service(
     let ws_hdrs = ws_serv_list
         .into_iter()
         .map(|addr| {
+            println!("*** Web3-websocket serve at {} ***", addr);
             start_ws(addr, None, Some(&vec!["*".to_string()]), io(), None)
                 .c(d!("Unable to start web3 ws service"))
                 .map(|s| WsServer(Some(s)))

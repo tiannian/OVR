@@ -64,7 +64,7 @@ pub struct DaemonCfg {
     #[clap(
         short = 'A',
         long,
-        default_value_t = ["[::]", "0.0.0.0"].join(","),
+        default_value_t = ["0.0.0.0"].join(","),
         help = "Addresses served by the daemon, seperated by ','"
     )]
     pub serv_addr_list: String,

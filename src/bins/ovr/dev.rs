@@ -468,7 +468,7 @@ impl Node {
             Ok(ForkResult::Child) => {
                 let cmd = format!(
                     r"
-                    ovr daemon -a {1} -r {2} -p {3} -w {4} -d {5} >{0}/app.log 2>&1 & \
+                    ovr daemon -a {1} -T {2} -p {3} -w {4} -d {5} >{0}/app.log 2>&1 & \
                     tendermint node --home {0} >{0}/tendermint.log 2>&1
                     ",
                     &self.home,
