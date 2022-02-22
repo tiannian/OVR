@@ -8,7 +8,7 @@ use evm::{
     executor::stack::{
         PrecompileFailure, PrecompileOutput, StackExecutor, StackSubstateMetadata,
     },
-    Config as EvmCfg, ExitReason,
+    Config as EvmCfg, CreateScheme, ExitReason,
 };
 use meta_tokens::Erc20Like;
 use once_cell::sync::Lazy;
@@ -110,13 +110,13 @@ impl Tx {
             Normal((ExitReason, Vec<u8>)),
         }
 
-        let mut contract_addr = None;
+        let contract_addr;
         let ret = match self.tx {
             TransactionAny::Legacy(tx) => {
                 let gas_limit = tx.gas_limit.try_into().unwrap_or(u64::MAX);
                 match tx.action {
                     TransactionAction::Call(target) => {
-                        contract_addr.replace(target);
+                        contract_addr = target;
                         if Erc20Like::addr_is_meta_token(target) {
                             Ret::Precompile(Erc20Like::execute(
                                 sb,
@@ -136,16 +136,20 @@ impl Tx {
                             ))
                         }
                     }
-                    TransactionAction::Create => Ret::Normal((
-                        executor.transact_create(
-                            addr,
-                            tx.value,
-                            tx.input,
-                            gas_limit,
+                    TransactionAction::Create => {
+                        let scheme = CreateScheme::Legacy { caller: addr };
+                        contract_addr = executor.create_address(scheme);
+                        Ret::Normal((
+                            executor.transact_create(
+                                addr,
+                                tx.value,
+                                tx.input,
+                                gas_limit,
+                                vec![],
+                            ),
                             vec![],
-                        ),
-                        vec![],
-                    )),
+                        ))
+                    }
                 }
             }
             TransactionAny::EIP2930(tx) => {
@@ -157,7 +161,7 @@ impl Tx {
                     .collect();
                 match tx.action {
                     TransactionAction::Call(target) => {
-                        contract_addr.replace(target);
+                        contract_addr = target;
                         if Erc20Like::addr_is_meta_token(target) {
                             Ret::Precompile(Erc20Like::execute(
                                 sb,
@@ -172,11 +176,16 @@ impl Tx {
                             ))
                         }
                     }
-                    TransactionAction::Create => Ret::Normal((
-                        executor
-                            .transact_create(addr, tx.value, tx.input, gas_limit, al),
-                        vec![],
-                    )),
+                    TransactionAction::Create => {
+                        let scheme = CreateScheme::Legacy { caller: addr };
+                        contract_addr = executor.create_address(scheme);
+                        Ret::Normal((
+                            executor.transact_create(
+                                addr, tx.value, tx.input, gas_limit, al,
+                            ),
+                            vec![],
+                        ))
+                    }
                 }
             }
             TransactionAny::EIP1559(tx) => {
@@ -188,7 +197,7 @@ impl Tx {
                     .collect();
                 match tx.action {
                     TransactionAction::Call(target) => {
-                        contract_addr.replace(target);
+                        contract_addr = target;
                         if Erc20Like::addr_is_meta_token(target) {
                             Ret::Precompile(Erc20Like::execute(
                                 sb,
@@ -203,11 +212,16 @@ impl Tx {
                             ))
                         }
                     }
-                    TransactionAction::Create => Ret::Normal((
-                        executor
-                            .transact_create(addr, tx.value, tx.input, gas_limit, al),
-                        vec![],
-                    )),
+                    TransactionAction::Create => {
+                        let scheme = CreateScheme::Legacy { caller: addr };
+                        contract_addr = executor.create_address(scheme);
+                        Ret::Normal((
+                            executor.transact_create(
+                                addr, tx.value, tx.input, gas_limit, al,
+                            ),
+                            vec![],
+                        ))
+                    }
                 }
             }
         };
@@ -400,7 +414,7 @@ pub(crate) struct ExecRet {
     pub(crate) exit_reason: ExitReason,
     pub(crate) extra_data: Vec<u8>,
     pub(crate) caller: H160,
-    pub(crate) contract_addr: Option<H160>,
+    pub(crate) contract_addr: H160,
 }
 
 impl ExecRet {
@@ -411,7 +425,7 @@ impl ExecRet {
         fee_used: U256,
         extra_data: Vec<u8>,
         caller: H160,
-        contract_addr: Option<H160>,
+        contract_addr: H160,
     ) -> Self {
         Self {
             success,
