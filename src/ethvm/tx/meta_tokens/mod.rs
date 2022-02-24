@@ -15,7 +15,7 @@ use ruc::*;
 use serde::{Deserialize, Serialize};
 use slices::u8_slice;
 use std::result::Result as StdResult;
-use vsdb::{BranchName, MapxVs, OrphanVs, Vs};
+use vsdb::{BranchName, MapxDkVs, MapxVs, OrphanVs, Vs};
 
 static OFUEL_ADDR: Lazy<H160> = Lazy::new(|| Erc20Like::ofuel_token().contract_addr);
 
@@ -55,7 +55,7 @@ pub(crate) struct Erc20Like {
     pub(crate) accounts: MapxVs<H160, OvrAccount>,
 
     // (addr, key) => value
-    pub(crate) storages: MapxVs<(H160, H256), H256>,
+    pub(crate) storages: MapxDkVs<H160, H256, H256>,
 
     // (owner addr, spender addr) => amount
     pub(crate) allowances: MapxVs<(H160, H160), U256>,
@@ -77,7 +77,7 @@ impl Erc20Like {
             issue_cap,
             total_supply: OrphanVs::new(0u8.into()),
             accounts: MapxVs::new(),
-            storages: MapxVs::new(),
+            storages: MapxDkVs::new(),
             allowances: MapxVs::new(),
             contract_addr,
         }

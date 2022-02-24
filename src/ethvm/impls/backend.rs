@@ -10,28 +10,23 @@ use crate::{
 };
 use evm::backend::{Apply, ApplyBackend, Backend, Basic, Log};
 use primitive_types::{H160, H256, U256};
-use vsdb::{BranchName, MapxOrd, MapxVs};
+use ruc::*;
+use vsdb::{BranchName, MapxDkVs, MapxOrd, MapxVs};
 
 // Ovr backend, storing all state values in vsdb.
 #[derive(Clone, Debug)]
 pub(crate) struct OvrBackend<'a> {
     pub(crate) branch: BranchName<'a>,
     pub(crate) state: MapxVs<H160, OvrAccount>,
-    pub(crate) storages: MapxVs<(H160, H256), H256>,
+    pub(crate) storages: MapxDkVs<H160, H256, H256>,
     pub(crate) block_hashes: MapxOrd<BlockHeight, H256>,
     pub(crate) vicinity: OvrVicinity,
 }
 
 impl<'a> OvrBackend<'a> {
-    // TODO: optimize performance
     #[inline(always)]
     fn reset_storage(&self, target: H160, b: BranchName) {
-        self.storages
-            .iter_by_branch(b)
-            .filter(|((addr, _), _)| addr == &target)
-            .for_each(|(k, _)| {
-                self.storages.remove_by_branch(&k, b).unwrap();
-            });
+        pnk!(self.storages.remove_by_branch(&(&target, None), b));
     }
 }
 
@@ -113,7 +108,7 @@ impl<'a> Backend for OvrBackend<'a> {
     #[inline(always)]
     fn storage(&self, address: H160, index: H256) -> H256 {
         self.storages
-            .get_by_branch(&(address, index), self.branch)
+            .get_by_branch(&(&address, &index), self.branch)
             .unwrap_or_default()
     }
 
