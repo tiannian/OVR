@@ -2,6 +2,7 @@
 ![GitHub issues](https://img.shields.io/github/issues-raw/ccmlm/OVR)
 ![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/ccmlm/OVR)
 ![GitHub Workflow Status](https://img.shields.io/github/workflow/status/ccmlm/OVR/Rust)
+[![Minimum rustc version](https://img.shields.io/badge/rustc-1.59+-lightgray.svg)](https://github.com/rust-random/rand#rust-version-requirements)
 
 # OVR
 
