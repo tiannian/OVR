@@ -12,18 +12,18 @@ use vsdb::{BranchName, MapxOrd, OrphanVs, Vs};
 
 #[allow(non_snake_case)]
 #[derive(Vs, Clone, Debug, Deserialize, Serialize)]
-pub(crate) struct State {
-    pub(crate) gas_price: OrphanVs<U256>,
-    pub(crate) block_gas_limit: OrphanVs<U256>,
-    pub(crate) block_base_fee_per_gas: OrphanVs<U256>,
+pub struct State {
+    pub gas_price: OrphanVs<U256>,
+    pub block_gas_limit: OrphanVs<U256>,
+    pub block_base_fee_per_gas: OrphanVs<U256>,
 
-    pub(crate) OFUEL: Erc20Like,
+    pub OFUEL: Erc20Like,
 
     // Environmental block hashes.
-    pub(crate) block_hashes: MapxOrd<BlockHeight, H256>,
+    pub block_hashes: MapxOrd<BlockHeight, H256>,
 
     // Oneshot values for each evm transaction.
-    pub(crate) vicinity: OvrVicinity,
+    pub vicinity: OvrVicinity,
 }
 
 impl State {
@@ -40,7 +40,7 @@ impl State {
 
     // update with each new block
     #[inline(always)]
-    pub(crate) fn update_vicinity(
+    pub fn update_vicinity(
         &mut self,
         chain_id: U256,
         block_coinbase: H160,
@@ -94,28 +94,28 @@ impl Default for State {
 
 // Account information of a vsdb backend.
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct OvrAccount {
-    pub(crate) nonce: U256,
-    pub(crate) balance: U256,
-    pub(crate) code: Vec<u8>,
+pub struct OvrAccount {
+    pub nonce: U256,
+    pub balance: U256,
+    pub code: Vec<u8>,
 }
 
 #[derive(Vs, Default, Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct OvrVicinity {
-    pub(crate) gas_price: U256,
-    pub(crate) origin: H160,
-    pub(crate) chain_id: U256,
+pub struct OvrVicinity {
+    pub gas_price: U256,
+    pub origin: H160,
+    pub chain_id: U256,
     // Environmental block number.
-    pub(crate) block_number: U256,
+    pub block_number: U256,
     // Environmental coinbase.
     // `H160(original proposer address)`
-    pub(crate) block_coinbase: H160,
+    pub block_coinbase: H160,
     // Environmental block timestamp.
-    pub(crate) block_timestamp: U256,
+    pub block_timestamp: U256,
     // Environmental block difficulty.
-    pub(crate) block_difficulty: U256,
+    pub block_difficulty: U256,
     // Environmental block gas limit.
-    pub(crate) block_gas_limit: U256,
+    pub block_gas_limit: U256,
     // Environmental base fee per gas.
-    pub(crate) block_base_fee_per_gas: U256,
+    pub block_base_fee_per_gas: U256,
 }

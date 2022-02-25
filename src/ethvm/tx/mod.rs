@@ -1,4 +1,4 @@
-pub(crate) mod meta_tokens;
+pub mod meta_tokens;
 
 use super::{impls::stack::OvrStackState, precompile::PRECOMPILE_SET, OvrAccount};
 use crate::ledger::StateBranch;
@@ -19,7 +19,7 @@ use sha3::{Digest, Keccak256};
 use std::{collections::BTreeMap, fmt, result::Result as StdResult};
 use vsdb::BranchName;
 
-pub(crate) static GAS_PRICE_MIN: Lazy<U256> = Lazy::new(|| U256::from(10u8));
+pub static GAS_PRICE_MIN: Lazy<U256> = Lazy::new(|| U256::from(10u8));
 
 type GasPrice = U256;
 type NeededAmount = U256;
@@ -31,7 +31,7 @@ pub struct Tx {
 
 impl Tx {
     #[inline(always)]
-    pub(crate) fn apply(
+    pub fn apply(
         self,
         sb: &mut StateBranch,
         b: BranchName,
@@ -408,13 +408,13 @@ impl Tx {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub(crate) struct ExecRet {
-    pub(crate) success: bool,
-    pub(crate) fee_used: U256,
-    pub(crate) exit_reason: ExitReason,
-    pub(crate) extra_data: Vec<u8>,
-    pub(crate) caller: H160,
-    pub(crate) contract_addr: H160,
+pub struct ExecRet {
+    pub success: bool,
+    pub fee_used: U256,
+    pub exit_reason: ExitReason,
+    pub extra_data: Vec<u8>,
+    pub caller: H160,
+    pub contract_addr: H160,
 }
 
 impl ExecRet {

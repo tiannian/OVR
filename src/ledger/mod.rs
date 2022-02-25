@@ -2,7 +2,7 @@
 //! # Ledger, world state
 //!
 
-pub(crate) mod staking;
+pub mod staking;
 
 use crate::{
     common::{
@@ -20,8 +20,8 @@ use serde::{Deserialize, Serialize};
 use std::{fs, io::ErrorKind, mem, sync::Arc};
 use vsdb::{
     merkle::{MerkleTree, MerkleTreeStore},
-    BranchName, MapxOrd, OrphanVs, ParentBranchName, ValueEn, ValueEnDe, Vs, VsMgmt,
-    INITIAL_VERSION,
+    BranchName, MapxOrd, OrphanVs, ParentBranchName, ValueEn, ValueEnDe, Vecx, Vs,
+    VsMgmt, INITIAL_VERSION,
 };
 
 const MAIN_BRANCH_NAME: BranchName = BranchName(b"Main");
@@ -35,12 +35,12 @@ static LEDGER_SNAPSHOT_PATH: Lazy<String> = Lazy::new(|| {
 });
 
 #[derive(Clone, Debug)]
-pub(crate) struct Ledger {
+pub struct Ledger {
     // used for web3 APIs
-    pub(crate) state: State,
-    pub(crate) main: Arc<RwLock<StateBranch>>,
-    pub(crate) deliver_tx: Arc<RwLock<StateBranch>>,
-    pub(crate) check_tx: Arc<RwLock<StateBranch>>,
+    pub state: State,
+    pub main: Arc<RwLock<StateBranch>>,
+    pub deliver_tx: Arc<RwLock<StateBranch>>,
+    pub check_tx: Arc<RwLock<StateBranch>>,
 }
 
 impl Ledger {
@@ -97,11 +97,7 @@ impl Ledger {
     }
 
     #[inline(always)]
-    pub(crate) fn consensus_refresh(
-        &self,
-        proposer: TmAddress,
-        timestamp: u64,
-    ) -> Result<()> {
+    pub fn consensus_refresh(&self, proposer: TmAddress, timestamp: u64) -> Result<()> {
         self.refresh_inner(proposer, timestamp, false).c(d!())
     }
 
@@ -145,7 +141,7 @@ impl Ledger {
     }
 
     #[inline(always)]
-    pub(crate) fn commit(&self) -> Result<HashValue> {
+    pub fn commit(&self) -> Result<HashValue> {
         let mut main = self.main.write();
         main.commit().c(d!()).map(|_| main.last_block_hash())
     }
@@ -170,11 +166,11 @@ impl Ledger {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub(crate) struct StateBranch {
-    pub(crate) state: State,
-    pub(crate) branch: Vec<u8>,
-    pub(crate) tx_hashes_in_process: Vec<HashValue>,
-    pub(crate) block_in_process: Block,
+pub struct StateBranch {
+    pub state: State,
+    pub branch: Vec<u8>,
+    pub tx_hashes_in_process: Vec<HashValue>,
+    pub block_in_process: Block,
 }
 
 impl StateBranch {
@@ -218,7 +214,7 @@ impl StateBranch {
 
     // Deal with each transaction.
     // Will be used by all the 3 branches of `Ledger`.
-    pub(crate) fn apply_tx(&mut self, tx: Tx) -> Result<()> {
+    pub fn apply_tx(&mut self, tx: Tx) -> Result<()> {
         let b = self.branch.clone();
         let b = b.as_slice().into();
 
@@ -231,8 +227,9 @@ impl StateBranch {
             .c(d!())?;
 
         let tx_hash = tx.hash();
+        let tx_clone = tx.clone();
 
-        match tx {
+        let ret = match tx {
             Tx::Evm(tx) => tx
                 .apply(self, b, false)
                 .map(|ret| {
@@ -259,7 +256,13 @@ impl StateBranch {
                     }
                     eg!(e.map(|e| e.to_string()).unwrap_or_default())
                 }),
+        };
+
+        if ret.is_ok() {
+            self.block_in_process.txs.push(tx_clone);
         }
+
+        ret
     }
 
     // NOTE:
@@ -303,12 +306,12 @@ impl StateBranch {
     }
 
     // #[inline(always)]
-    // pub(crate) fn get_evm_state(&mut self) -> &ethvm::State {
+    // pub fn get_evm_state(&mut self) -> &ethvm::State {
     //     &self.state.evm
     // }
 
     #[inline(always)]
-    pub(crate) fn get_evm_state_mut(&mut self) -> &mut ethvm::State {
+    pub fn get_evm_state_mut(&mut self) -> &mut ethvm::State {
         &mut self.state.evm
     }
 
@@ -332,17 +335,17 @@ impl StateBranch {
     // }
 
     #[inline(always)]
-    pub(crate) fn last_block(&self) -> Option<Block> {
+    pub fn last_block(&self) -> Option<Block> {
         self.state.blocks.last().map(|(_, b)| b)
     }
 
     // #[inline(always)]
-    // pub(crate) fn last_block_height(&self) -> BlockHeight {
+    // pub fn last_block_height(&self) -> BlockHeight {
     //     self.state.blocks.last().map(|(h, _)| h).unwrap_or(0)
     // }
 
     #[inline(always)]
-    pub(crate) fn last_block_hash(&self) -> HashValue {
+    pub fn last_block_hash(&self) -> HashValue {
         self.last_block().unwrap_or_default().header_hash
     }
 
@@ -373,16 +376,16 @@ impl StateBranch {
 }
 
 #[derive(Vs, Default, Clone, Debug, Deserialize, Serialize)]
-pub(crate) struct State {
-    pub(crate) chain_id: OrphanVs<u64>,
-    pub(crate) chain_name: OrphanVs<String>,
-    pub(crate) chain_version: OrphanVs<String>,
+pub struct State {
+    pub chain_id: OrphanVs<u64>,
+    pub chain_name: OrphanVs<String>,
+    pub chain_version: OrphanVs<String>,
 
-    pub(crate) evm: ethvm::State,
-    pub(crate) staking: staking::State,
+    pub evm: ethvm::State,
+    pub staking: staking::State,
 
     // maintained by the 'main' branch only
-    pub(crate) blocks: MapxOrd<BlockHeight, Block>,
+    pub blocks: MapxOrd<BlockHeight, Block>,
 }
 
 impl State {
@@ -404,9 +407,10 @@ impl State {
 }
 
 #[derive(Vs, Clone, Debug, Default, Deserialize, Serialize)]
-pub(crate) struct Block {
-    pub(crate) header: BlockHeader,
-    pub(crate) header_hash: HashValue,
+pub struct Block {
+    pub header: BlockHeader,
+    pub header_hash: HashValue,
+    pub txs: Vecx<Tx>,
 }
 
 impl Block {
@@ -426,22 +430,23 @@ impl Block {
                 prev_hash,
             },
             header_hash: Default::default(),
+            txs: Vecx::new(),
         }
     }
 }
 
 #[derive(Vs, Clone, Debug, Default, Deserialize, Serialize)]
-pub(crate) struct BlockHeader {
+pub struct BlockHeader {
     // height of the current block
-    pub(crate) height: BlockHeight,
+    pub height: BlockHeight,
     // proposer of the current block
-    pub(crate) proposer: TmAddress,
+    pub proposer: TmAddress,
     // timestamp of the current block
-    pub(crate) timestamp: u64,
+    pub timestamp: u64,
     // transaction merkle tree of the current block
-    pub(crate) tx_merkle: TxMerkle,
+    pub tx_merkle: TxMerkle,
     // hash of the previous block header
-    pub(crate) prev_hash: HashValue,
+    pub prev_hash: HashValue,
 }
 
 impl BlockHeader {
@@ -470,9 +475,9 @@ impl BlockHeader {
 }
 
 #[derive(Vs, Clone, Debug, Default, Deserialize, Serialize)]
-pub(crate) struct TxMerkle {
-    pub(crate) root_hash: HashValue,
-    pub(crate) tree: MerkleTreeStore,
+pub struct TxMerkle {
+    pub root_hash: HashValue,
+    pub tree: MerkleTreeStore,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

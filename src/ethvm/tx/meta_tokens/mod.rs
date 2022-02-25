@@ -42,23 +42,23 @@ const GAS_APPROVE: u64 = 20750;
 const GAS_TRANSFER_FROM: u64 = 6610;
 
 #[derive(Vs, Clone, Debug, Deserialize, Serialize)]
-pub(crate) struct Erc20Like {
+pub struct Erc20Like {
     // will never change
-    pub(crate) contract_addr: H160,
+    pub contract_addr: H160,
 
-    pub(crate) name: Vec<u8>,
-    pub(crate) symbol: Vec<u8>,
-    pub(crate) decimal: u32,
-    pub(crate) issue_cap: Option<U256>,
-    pub(crate) total_supply: OrphanVs<U256>,
+    pub name: Vec<u8>,
+    pub symbol: Vec<u8>,
+    pub decimal: u32,
+    pub issue_cap: Option<U256>,
+    pub total_supply: OrphanVs<U256>,
 
-    pub(crate) accounts: MapxVs<H160, OvrAccount>,
+    pub accounts: MapxVs<H160, OvrAccount>,
 
     // (addr, key) => value
-    pub(crate) storages: MapxDkVs<H160, H256, H256>,
+    pub storages: MapxDkVs<H160, H256, H256>,
 
     // (owner addr, spender addr) => amount
-    pub(crate) allowances: MapxVs<(H160, H160), U256>,
+    pub allowances: MapxVs<(H160, H160), U256>,
 }
 
 impl Erc20Like {
@@ -84,7 +84,7 @@ impl Erc20Like {
     }
 
     #[inline(always)]
-    pub(crate) fn ofuel_token() -> Self {
+    pub fn ofuel_token() -> Self {
         let name: &[u8; 96] = u8_slice!(
             "0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000a4f76657265616c69747900000000000000000000000000000000000000000000"
         );
@@ -102,17 +102,17 @@ impl Erc20Like {
     // }
 
     // #[inline(always)]
-    // pub(crate) fn is_meta_token(&self) -> bool {
+    // pub fn is_meta_token(&self) -> bool {
     //     self.is_ofuel()
     // }
 
     #[inline(always)]
-    pub(crate) fn addr_is_ofuel(addr: H160) -> bool {
+    pub fn addr_is_ofuel(addr: H160) -> bool {
         addr == *OFUEL_ADDR
     }
 
     #[inline(always)]
-    pub(crate) fn addr_is_meta_token(addr: H160) -> bool {
+    pub fn addr_is_meta_token(addr: H160) -> bool {
         Self::addr_is_ofuel(addr)
     }
 
@@ -429,7 +429,7 @@ impl Erc20Like {
         })
     }
 
-    pub(crate) fn execute(
+    pub fn execute(
         sb: &mut StateBranch,
         contract_addr: H160,
         caller: H160,
