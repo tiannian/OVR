@@ -17,3 +17,4 @@ Cargo.lock
 debug
 release
 tools/tendermint
+*tar.gz

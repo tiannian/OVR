@@ -55,3 +55,6 @@ tendermint:
 	- rm $(shell which tendermint)
 	bash tools/download_tendermint.sh 'tools/tendermint'
 	cd tools/tendermint && $(MAKE) install
+
+prodenv:
+	bash tools/create_prod_env.sh
