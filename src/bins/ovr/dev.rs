@@ -13,7 +13,8 @@ use nix::{
     },
     unistd::{close, fork, ForkResult},
 };
-use ovr::cfg::DevCfg;
+use ovr::{cfg::DevCfg, DECIMAL};
+use primitive_types::{H160, U256};
 use ruc::{cmd, *};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -116,6 +117,8 @@ pub struct Env {
     // the contents of `genesis.json` of all nodes
     genesis: Vec<u8>,
 
+    token_distribution: TokenDistribution,
+
     seed_nodes: BTreeMap<NodeId, Node>,
     full_nodes: BTreeMap<NodeId, Node>,
     validator_nodes: BTreeMap<NodeId, Node>,
@@ -134,6 +137,7 @@ impl Env {
         let mut env = Env {
             name: cfg.name.clone(),
             home: format!("{}/{}", ENV_BASE_DIR, &cfg.name),
+            token_distribution: TokenDistribution::generate(),
             block_itv_secs: cfg.block_itv_secs,
             ..Self::default()
         };
@@ -373,11 +377,15 @@ impl Env {
                             v["name"] = Value::String(format!("node-{}", i));
                         },
                     );
+                    let app_state =
+                        serde_json::to_value(&self.token_distribution.addr_to_amount)
+                            .c(d!())?;
                     fs::read_to_string(format!("{}/{}", tmp_home, genesis_file))
                         .c(d!())
                         .and_then(|g| serde_json::from_str::<Value>(&g).c(d!()))
                         .map(|mut g| {
                             g["validators"] = vs;
+                            g["app_state"] = app_state;
                             self.genesis = g.to_string().into_bytes();
                         })
                 })
@@ -436,7 +444,7 @@ impl Env {
     }
 
     fn write_cfg(&self) -> Result<()> {
-        serde_json::to_vec(self)
+        serde_json::to_vec_pretty(self)
             .c(d!())
             .and_then(|d| fs::write(format!("{}/config.json", &self.home), d).c(d!()))
     }
@@ -700,4 +708,36 @@ fn exec_spawn(cmd: &str) -> Result<()> {
         .wait()
         .c(d!())
         .map(|exit_status| println!("{}", exit_status))
+}
+
+#[derive(Default, Debug, Clone, Deserialize, Serialize)]
+struct TokenDistribution {
+    addr_to_amount: BTreeMap<H160, U256>,
+    addr_to_amount_readable: BTreeMap<H160, String>,
+    addr_to_phrase: BTreeMap<H160, String>,
+}
+
+impl TokenDistribution {
+    fn generate() -> Self {
+        // pre-mint: 1 billion readable tokens
+        const AM: u128 = 1_000_000_000;
+
+        let (addr, phrase) = crate::client::gen_account();
+        let am = pnk!(AM.checked_mul(pnk!(10u128.checked_pow(DECIMAL))));
+        let am = U256::from(am);
+        let am_readable = AM
+            .to_string()
+            .as_bytes()
+            .rchunks(3)
+            .rev()
+            .collect::<Vec<_>>()
+            .join(&b',');
+        let am_readable = format!("{} OFUEL", pnk!(String::from_utf8(am_readable)));
+
+        TokenDistribution {
+            addr_to_amount: map! { B addr => am },
+            addr_to_amount_readable: map! { B addr => am_readable },
+            addr_to_phrase: map! { B addr => phrase },
+        }
+    }
 }

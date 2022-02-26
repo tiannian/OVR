@@ -51,11 +51,12 @@ pkg_name="prodenv.tar.gz"
 rm -rf $pkg_dir $pkg_name 2>/dev/null
 mkdir $pkg_dir || exit 1
 
-cp -r ${env_path}/1 ${pkg_dir}/seed-1 || exit 1
-cp -r ${env_path}/2 ${pkg_dir}/full-1 || exit 1
 for i in 5 4 3; do
     cp -r ${env_path}/${i} ${pkg_dir}/validator-$[i - 2] || exit 1
 done
+cp -r ${env_path}/2 ${pkg_dir}/full-1 || exit 1
+cp -r ${env_path}/1 ${pkg_dir}/seed-1 || exit 1
+cp ${env_path}/config.json ${pkg_dir}/env_config.json || exit 1
 
 rm -rf ${env_path} || exit 1
 

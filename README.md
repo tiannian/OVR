@@ -27,7 +27,7 @@ ovr dev --env-destroy
 
 Top-level overview:
 
-```
+```shell
 ovr 0.2.1
 OVR development team, fanhui.x@gmail.com
 Official implementations of the Overeality project.
@@ -48,7 +48,7 @@ SUBCOMMANDS:
 
 A very useful sub-command for developers:
 
-```
+```shell
 ovr-dev
 Development utils, create a local env, .etc
 
@@ -66,4 +66,12 @@ OPTIONS:
     -r, --env-rm-node
     -s, --env-start
     -S, --env-stop
+```
+
+Generate new accounts:
+
+```shell
+# ovr cli -g
+Address: B9F0BCE64FDDB1158C9467BF998156DBAB3418F0
+Phrase: scare brisk fresh venture dish achieve tourist song choice voice brush topic
 ```

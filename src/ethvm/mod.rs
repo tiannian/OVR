@@ -100,6 +100,15 @@ pub struct OvrAccount {
     pub code: Vec<u8>,
 }
 
+impl OvrAccount {
+    pub fn from_balance(balance: U256) -> Self {
+        Self {
+            balance,
+            ..Default::default()
+        }
+    }
+}
+
 #[derive(Vs, Default, Clone, Debug, Serialize, Deserialize)]
 pub struct OvrVicinity {
     pub gas_price: U256,

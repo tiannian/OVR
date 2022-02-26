@@ -8,5 +8,5 @@ mod tx;
 
 pub use cfg::{Cfg, Commands, DaemonCfg};
 pub use consensus::App;
-pub use ethvm::tx::Tx as EvmTx;
+pub use ethvm::tx::{meta_tokens::DECIMAL, Tx as EvmTx};
 pub use tx::native::Tx as NativeTx;

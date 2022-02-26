@@ -18,6 +18,8 @@ use slices::u8_slice;
 use std::result::Result as StdResult;
 use vsdb::{BranchName, MapxDkVs, MapxVs, OrphanVs, Vs};
 
+pub const DECIMAL: u32 = 18;
+
 static OFUEL_ADDR: Lazy<H160> = Lazy::new(|| Erc20Like::ofuel_token().contract_addr);
 
 // ERC20 transfer event selector, Keccak256("Transfer(address,address,uint256)"),
@@ -94,7 +96,13 @@ impl Erc20Like {
         );
         let issue_cap = None;
         let contract_addr = idx_to_h160(0x1000); // Compitable with Findora
-        Self::new(name.to_vec(), symbol.to_vec(), 18, issue_cap, contract_addr)
+        Self::new(
+            name.to_vec(),
+            symbol.to_vec(),
+            DECIMAL,
+            issue_cap,
+            contract_addr,
+        )
     }
 
     // #[inline(always)]

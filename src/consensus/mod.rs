@@ -7,11 +7,14 @@
 use crate::{
     cfg::DaemonCfg as Cfg,
     common::{BlockHeight, HashValue},
+    ethvm::OvrAccount,
     ledger::Ledger,
     tx::Tx,
 };
 use abci::Application;
+use primitive_types::{H160, U256};
 use ruc::*;
+use std::collections::BTreeMap;
 use tmtypes::abci::{
     RequestBeginBlock, RequestCheckTx, RequestDeliverTx, RequestEndBlock, RequestInfo,
     RequestInitChain, ResponseBeginBlock, ResponseCheckTx, ResponseCommit,
@@ -86,8 +89,22 @@ impl Application for App {
         resp
     }
 
-    // TODO
     fn init_chain(&self, req: RequestInitChain) -> ResponseInitChain {
+        let token_distribution = pnk!(serde_json::from_slice::<BTreeMap<H160, U256>>(
+            &req.app_state_bytes
+        ));
+
+        for (addr, am) in token_distribution.into_iter() {
+            pnk!(
+                self.ledger
+                    .state
+                    .evm
+                    .OFUEL
+                    .accounts
+                    .insert(addr, OvrAccount::from_balance(am))
+            );
+        }
+
         ResponseInitChain::default()
     }
 
