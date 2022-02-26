@@ -53,6 +53,8 @@ evm = { version = "0.33.1", default-features = false, features = ["with-serde"] 
 ethereum = { version = "0.11.1", default-features = false, features = ["with-serde"] }
 primitive-types = { version = "0.10.1", default-features = false, features = ["rlp", "byteorder", "serde"] }
 
+eth-utils = "0.1.1"
+
 fevm = { package = "pallet-evm", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
 fevm-precompile-blake2 = { package = "pallet-evm-precompile-blake2", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
 fevm-precompile-bn128 = { package = "pallet-evm-precompile-bn128", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
@@ -64,7 +66,6 @@ fevm-precompile-simple = { package = "pallet-evm-precompile-simple", git = "http
 # fevm-precompile-dispatch = { package = "pallet-evm-precompile-dispatch", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
 
 # deps of web3-rpc
-precompile-utils = { git = "https://github.com/ccmlm/precompile_utils", branch = "master" }
 f-rpc-core = { package = "fp-rpc-core", git = "https://github.com/ccmlm/platform.git", branch = "web3-rpc" }
 f-rpc-server = { package = "fp-rpc-server", git = "https://github.com/ccmlm/platform.git", branch = "web3-rpc"}
 f-utils = { package = "fp-utils", git = "https://github.com/ccmlm/platform.git", branch = "web3-rpc"}

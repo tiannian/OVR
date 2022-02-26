@@ -2,14 +2,15 @@ use crate::{
     ethvm::{precompile::idx_to_h160, OvrAccount},
     ledger::StateBranch,
 };
+use eth_utils::evm_precompiles::{
+    error, generate_function_selector, Address, EvmDataReader, EvmDataWriter, EvmResult,
+    Gasometer, LogsBuilder,
+};
 use evm::{
     executor::stack::{PrecompileFailure, PrecompileOutput},
     ExitSucceed,
 };
 use once_cell::sync::Lazy;
-use precompile_utils::{
-    error, Address, EvmDataReader, EvmDataWriter, EvmResult, Gasometer, LogsBuilder,
-};
 use primitive_types::{H160, H256, U256};
 use ruc::*;
 use serde::{Deserialize, Serialize};
@@ -461,7 +462,7 @@ impl Erc20Like {
     }
 }
 
-#[precompile_utils::generate_function_selector]
+#[generate_function_selector]
 #[derive(Debug, PartialEq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive)]
 enum Call {
     Name = "name()",
