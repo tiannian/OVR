@@ -169,6 +169,8 @@ pub struct CliCfg {
         help = "A port used for websocket service"
     )]
     pub serv_ws_port: u16,
+    #[clap(short = 'g', long, help = "Generate a new account")]
+    pub gen_account: bool,
 }
 
 #[derive(Debug, Parser)]

@@ -13,11 +13,11 @@ fn main() {
     let config = Cfg::parse();
 
     match config.commands {
-        Commands::Cli(_cfg) => {
-            todo!()
+        Commands::Cli(cfg) => {
+            pnk!(client::exec(cfg));
         }
         Commands::Daemon(cfg) => {
-            pnk!(daemon::start(cfg));
+            pnk!(daemon::exec(cfg));
         }
         Commands::Dev(cfg) => {
             pnk!(dev::EnvCfg::from(cfg).exec());

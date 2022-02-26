@@ -10,7 +10,7 @@ use std::net::SocketAddr;
 const MB: usize = 1 << 20;
 const BUF_SIZ: usize = 128 * MB;
 
-pub fn start(cfg: DaemonCfg) -> Result<()> {
+pub fn exec(cfg: DaemonCfg) -> Result<()> {
     let app = App::load_or_create(cfg).c(d!())?;
 
     start_web3_service(&app).c(d!())?;
