@@ -27,7 +27,7 @@ env_name="prodenv-${RANDOM}${RANDOM}"
 env_path="/tmp/__OVR_DEV__/${env_name}"
 
 ../release/ovr dev -d -n $env_name 2>/dev/null
-../release/ovr dev -c -n $env_name >/dev/null || exit 1
+../release/ovr dev -c -N 7 -n $env_name >/dev/null || exit 1
 sleep 3
 ../release/ovr dev -S -n $env_name >/dev/null || exit 1
 
@@ -51,7 +51,7 @@ pkg_name="prodenv.tar.gz"
 rm -rf $pkg_dir $pkg_name 2>/dev/null
 mkdir $pkg_dir || exit 1
 
-for i in 5 4 3; do
+for i in 9 8 7 6 5 4 3; do
     cp -r ${env_path}/${i} ${pkg_dir}/validator-$[i - 2] || exit 1
 done
 cp -r ${env_path}/2 ${pkg_dir}/full-1 || exit 1

@@ -193,6 +193,13 @@ pub struct DevCfg {
     pub env_info: bool,
     #[clap(short = 'I', long, default_value_t = 1)]
     pub block_itv_secs: u8,
+    #[clap(
+        short = 'N',
+        long,
+        default_value_t = 3,
+        help = "how many validator nodes should be created"
+    )]
+    pub validator_num: u8,
 }
 
 #[cfg(target_os = "linux")]

@@ -48,6 +48,9 @@ pub struct EnvCfg {
 
     // seconds between two blocks
     block_itv_secs: u8,
+
+    // how many validator nodes should be created
+    validator_num: u8,
 }
 
 impl From<DevCfg> for EnvCfg {
@@ -72,6 +75,7 @@ impl From<DevCfg> for EnvCfg {
             name: cfg.env_name.unwrap_or_else(|| ENV_NAME_DEFAULT.to_owned()),
             ops,
             block_itv_secs: cfg.block_itv_secs,
+            validator_num: cfg.validator_num,
         }
     }
 }
@@ -153,7 +157,7 @@ impl Env {
 
         add_initial_nodes!(Seed);
         add_initial_nodes!(Full);
-        for _ in 0..3 {
+        for _ in 0..cfg.validator_num {
             add_initial_nodes!(Node);
         }
 
