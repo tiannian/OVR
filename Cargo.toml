@@ -1,6 +1,6 @@
 [package]
 name = "ovr"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 authors = ["OVR development team", "fanhui.x@gmail.com"]
 description = "Official implementations of the Overeality project."

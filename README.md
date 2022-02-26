@@ -28,7 +28,7 @@ ovr dev --env-destroy
 Top-level overview:
 
 ```shell
-ovr 0.2.1
+ovr 0.2.x
 OVR development team, fanhui.x@gmail.com
 Official implementations of the Overeality project.
 
@@ -72,6 +72,6 @@ Generate new accounts:
 
 ```shell
 # ovr cli -g
-Address: B9F0BCE64FDDB1158C9467BF998156DBAB3418F0
-Phrase: scare brisk fresh venture dish achieve tourist song choice voice brush topic
+Address: 0x0bab883d3adb7ec30f8b6ec9f3fc7265d20cae94
+Phrase: face coach arrive affair gasp winner slow focus romance nothing project lesson
 ```
