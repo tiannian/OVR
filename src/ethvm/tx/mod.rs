@@ -1,8 +1,11 @@
 pub mod meta_tokens;
 
 use super::{impls::stack::OvrStackState, precompile::PRECOMPILE_SET, OvrAccount};
-use crate::ledger::StateBranch;
-use ethereum::{TransactionAction, TransactionAny};
+use crate::{
+    common::HashValue,
+    ledger::{Log as LedgerLog, Receipt, StateBranch},
+};
+use ethereum::{Log, TransactionAction, TransactionAny};
 use evm::{
     backend::{Apply, ApplyBackend},
     executor::stack::{
@@ -16,6 +19,7 @@ use primitive_types::{H160, H256, U256};
 use ruc::*;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
+use std::collections::HashMap;
 use std::{collections::BTreeMap, fmt, result::Result as StdResult};
 use vsdb::BranchName;
 
@@ -36,10 +40,12 @@ impl Tx {
         sb: &mut StateBranch,
         b: BranchName,
         estimate: bool,
-    ) -> StdResult<ExecRet, Option<ExecRet>> {
+    ) -> StdResult<(ExecRet, Receipt), Option<ExecRet>> {
         if let Ok((addr, _, gas_price)) = info!(self.pre_exec(sb, b)) {
+            let (from, to) = self.get_from_to();
             let ret = self.exec(addr, gas_price, sb, b, estimate);
-            alt!(ret.success, Ok(ret), Err(Some(ret)))
+            let r = ret.gen_receipt(from, to);
+            alt!(ret.success, Ok((ret, r)), Err(Some(ret)))
         } else {
             Err(None)
         }
@@ -248,7 +254,7 @@ impl Tx {
                 };
                 sb.state.evm.get_backend_hdr(b).apply(
                     Vec::<Apply<BTreeMap<H256, H256>>>::new(),
-                    logs,
+                    logs.clone(),
                     false,
                 );
                 ExecRet::new(
@@ -258,6 +264,7 @@ impl Tx {
                     extra_data,
                     addr,
                     contract_addr,
+                    logs,
                 )
             }
             Ret::Normal((exit_reason, extra_data)) => {
@@ -265,11 +272,11 @@ impl Tx {
                 let success = matches!(exit_reason, ExitReason::Succeed(_));
                 let (changes, logs) = executor.into_state().deconstruct();
                 if success {
-                    backend.apply(changes, logs, false);
+                    backend.apply(changes, logs.clone(), false);
                 } else {
                     backend.apply(
                         Vec::<Apply<BTreeMap<H256, H256>>>::new(),
-                        logs,
+                        logs.clone(),
                         false,
                     );
                 }
@@ -280,6 +287,7 @@ impl Tx {
                     extra_data,
                     addr,
                     contract_addr,
+                    logs,
                 )
             }
         }
@@ -405,6 +413,25 @@ impl Tx {
             Keccak256::digest(&pubkey).as_slice(),
         )))
     }
+
+    fn get_from_to(&self) -> (Option<H160>, Option<H160>) {
+        let from = self.recover_signer();
+        let to = match &self.tx {
+            TransactionAny::Legacy(l) => match l.action {
+                TransactionAction::Call(addr) => Some(addr),
+                TransactionAction::Create => None,
+            },
+            TransactionAny::EIP2930(e) => match e.action {
+                TransactionAction::Call(addr) => Some(addr),
+                TransactionAction::Create => None,
+            },
+            TransactionAny::EIP1559(e) => match e.action {
+                TransactionAction::Call(addr) => Some(addr),
+                TransactionAction::Create => None,
+            },
+        };
+        (from, to)
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -415,6 +442,7 @@ pub struct ExecRet {
     pub extra_data: Vec<u8>,
     pub caller: H160,
     pub contract_addr: H160,
+    pub logs: Vec<Log>,
 }
 
 impl ExecRet {
@@ -426,6 +454,7 @@ impl ExecRet {
         extra_data: Vec<u8>,
         caller: H160,
         contract_addr: H160,
+        logs: Vec<Log>,
     ) -> Self {
         Self {
             success,
@@ -434,7 +463,40 @@ impl ExecRet {
             extra_data,
             caller,
             contract_addr,
+            logs,
         }
+    }
+
+    fn gen_receipt(&self, from: Option<H160>, to: Option<H160>) -> Receipt {
+        let contract_addr = if to.is_none() {
+            Some(self.contract_addr)
+        } else {
+            None
+        };
+
+        Receipt {
+            tx_hash: vec![],
+            tx_index: 0,
+            from,
+            to,
+            block_gas_used: Default::default(),
+            tx_gas_used: self.fee_used,
+            contract_addr,
+            state_root: None,
+            logs_bloom: None,
+            status_code: self.success,
+        }
+    }
+
+    pub fn gen_logs(&self, tx_hash: HashValue) -> HashMap<HashValue, LedgerLog> {
+        let mut m = HashMap::new();
+        for l in self.logs.iter() {
+            m.insert(
+                tx_hash.clone(),
+                LedgerLog::new_from_eth_log_and_tx_hash(l, &tx_hash),
+            );
+        }
+        m
     }
 }
 

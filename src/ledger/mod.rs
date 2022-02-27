@@ -12,12 +12,14 @@ use crate::{
     ethvm::{self, tx::GAS_PRICE_MIN},
     tx::Tx,
 };
+use ethereum::Log as EthLog;
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
-use primitive_types::{H160, U256};
+use primitive_types::{H160, H256, U256};
 use ruc::*;
 use serde::{Deserialize, Serialize};
-use std::{fs, io::ErrorKind, mem, sync::Arc};
+use serde_json::Value;
+use std::{collections::HashMap, fs, io::ErrorKind, mem, sync::Arc};
 use vsdb::{
     merkle::{MerkleTree, MerkleTreeStore},
     BranchName, MapxOrd, OrphanVs, ParentBranchName, ValueEn, ValueEnDe, Vecx, Vs,
@@ -173,6 +175,11 @@ pub struct StateBranch {
     pub block_in_process: Block,
 }
 
+pub struct ApplyResp {
+    pub receipt: Option<Receipt>,
+    pub logs: Option<HashMap<HashValue, Log>>,
+}
+
 impl StateBranch {
     #[inline(always)]
     fn new(state: &State, branch: BranchName) -> Result<Self> {
@@ -214,7 +221,7 @@ impl StateBranch {
 
     // Deal with each transaction.
     // Will be used by all the 3 branches of `Ledger`.
-    pub fn apply_tx(&mut self, tx: Tx) -> Result<()> {
+    pub(crate) fn apply_tx(&mut self, tx: Tx) -> Result<ApplyResp> {
         let b = self.branch.clone();
         let b = b.as_slice().into();
 
@@ -227,14 +234,17 @@ impl StateBranch {
             .c(d!())?;
 
         let tx_hash = tx.hash();
-        let tx_clone = tx.clone();
 
-        let ret = match tx {
+        let mut r = None;
+        let mut m = None;
+        match tx {
             Tx::Evm(tx) => tx
                 .apply(self, b, false)
-                .map(|ret| {
+                .map(|(ret, receipt)| {
                     self.charge_fee(ret.caller, ret.fee_used, b);
-                    self.tx_hashes_in_process.push(tx_hash);
+                    self.tx_hashes_in_process.push(tx_hash.clone());
+                    m = Some(ret.gen_logs(tx_hash));
+                    r = Some(receipt);
                 })
                 .map_err(|e| {
                     pnk!(self.state.version_pop_by_branch(b));
@@ -242,7 +252,7 @@ impl StateBranch {
                         self.charge_fee(ret.caller, ret.fee_used, b);
                     }
                     eg!(e.map(|e| e.to_string()).unwrap_or_default())
-                }),
+                })?,
             Tx::Native(tx) => tx
                 .apply(self, b)
                 .map(|ret| {
@@ -255,14 +265,13 @@ impl StateBranch {
                         self.charge_fee(ret.caller, ret.fee_used, b);
                     }
                     eg!(e.map(|e| e.to_string()).unwrap_or_default())
-                }),
+                })?,
         };
 
-        if ret.is_ok() {
-            self.block_in_process.txs.push(tx_clone);
-        }
-
-        ret
+        Ok(ApplyResp {
+            receipt: r,
+            logs: m,
+        })
     }
 
     // NOTE:
@@ -282,6 +291,31 @@ impl StateBranch {
 
         self.block_in_process.header.tx_merkle.tree = mt.into();
         self.block_in_process.header.tx_merkle.root_hash = root;
+
+        // Calculate the total amount of block gas to be used
+        let block_gas_used: U256 = U256::zero();
+        self.block_in_process
+            .header
+            .receipts
+            .iter()
+            .for_each(|(_, r)| {
+                block_gas_used.saturating_add(r.tx_gas_used);
+            });
+        for hash in self.tx_hashes_in_process.iter() {
+            if let Some(mut r) = self.block_in_process.header.receipts.get_mut(hash) {
+                r.block_gas_used = block_gas_used;
+            }
+        }
+
+        // Calculate the subscript position of the log in this block
+        let mut log_index_in_block = 0;
+        for tx_hash in self.tx_hashes_in_process.iter() {
+            if let Some(mut log) = self.block_in_process.logs.get_mut(tx_hash) {
+                log.log_index_in_block = log_index_in_block;
+                log_index_in_block += 1;
+            }
+        }
+
         self.block_in_process.header_hash = self.block_in_process.header.hash();
 
         let block = mem::take(&mut self.block_in_process);
@@ -410,7 +444,10 @@ impl State {
 pub struct Block {
     pub header: BlockHeader,
     pub header_hash: HashValue,
+    // transaction vec
     pub txs: Vecx<Tx>,
+    // evm execute log
+    pub logs: MapxOrd<HashValue, Log>,
 }
 
 impl Block {
@@ -428,9 +465,70 @@ impl Block {
                 timestamp,
                 tx_merkle: TxMerkle::default(),
                 prev_hash,
+                receipts: MapxOrd::default(),
             },
             header_hash: Default::default(),
-            txs: Vecx::new(),
+            txs: Vecx::default(),
+            logs: MapxOrd::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct Receipt {
+    // transaction hash
+    pub tx_hash: HashValue,
+    // transaction index in block
+    pub tx_index: u64,
+    // transaction originator
+    pub from: Option<H160>,
+    // transaction recipients
+    pub to: Option<H160>,
+    // the total amount of gas used for all transactions in this block
+    pub block_gas_used: U256,
+    // gas used for transaction
+    pub tx_gas_used: U256,
+    // here is contract address if recipients is none
+    pub contract_addr: Option<H160>,
+    // TODO: to be filled
+    pub state_root: Option<HashValue>,
+    // TODO: to be filled
+    pub logs_bloom: Option<Value>,
+    // execute success or failure
+    pub status_code: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct Log {
+    // source address of this log
+    pub address: H160,
+    // 0 to 4 32 bytes of data for the index log parameter. In solidity, the first topic is event signatures
+    pub topics: Vec<H256>,
+    // One or more 32-byte un-indexed parameters containing this log
+    pub data: Vec<u8>,
+    // transaction hash
+    pub tx_hash: HashValue,
+    // transaction index in block
+    pub tx_index: u64,
+    // log index in block
+    pub log_index_in_block: u64,
+    // log index in transaction
+    pub log_index_in_tx: u64,
+    // returns true if the log has been deleted, false if it is a valid log
+    pub removed: bool,
+}
+
+impl Log {
+    pub fn new_from_eth_log_and_tx_hash(log: &EthLog, tx_hash: &HashValue) -> Self {
+        Self {
+            address: log.address,
+            topics: log.topics.clone(),
+            data: log.data.clone(),
+            tx_hash: tx_hash.clone(),
+            tx_index: 0,
+            log_index_in_block: 0,
+            log_index_in_tx: 0,
+            removed: false,
         }
     }
 }
@@ -447,6 +545,8 @@ pub struct BlockHeader {
     pub tx_merkle: TxMerkle,
     // hash of the previous block header
     pub prev_hash: HashValue,
+    // execution results for each transaction
+    pub receipts: MapxOrd<HashValue, Receipt>,
 }
 
 impl BlockHeader {
@@ -459,6 +559,7 @@ impl BlockHeader {
             timestamp: u64,
             merkle_root: HashValueRef<'a>,
             prev_hash: HashValueRef<'a>,
+            receipts: &'a MapxOrd<HashValue, Receipt>,
         }
 
         let contents = Contents {
@@ -467,6 +568,7 @@ impl BlockHeader {
             timestamp: self.timestamp,
             merkle_root: &self.tx_merkle.root_hash,
             prev_hash: &self.prev_hash,
+            receipts: &self.receipts,
         }
         .encode_value();
 

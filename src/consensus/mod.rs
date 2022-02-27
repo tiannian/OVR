@@ -8,7 +8,7 @@ use crate::{
     cfg::DaemonCfg as Cfg,
     common::{BlockHeight, HashValue},
     ethvm::OvrAccount,
-    ledger::Ledger,
+    ledger::{Ledger, Receipt},
     tx::Tx,
 };
 use abci::Application;
@@ -148,10 +148,37 @@ impl Application for App {
         if let Ok(tx) = Tx::deserialize(&req.tx) {
             if tx.valid_in_abci() {
                 let mut sb = self.ledger.deliver_tx.write();
-                if let Err(e) = info!(sb.apply_tx(tx)) {
-                    resp.log = e.to_string();
-                    resp.code = 1;
-                }
+                match sb.apply_tx(tx.clone()) {
+                    Ok(resp) => {
+                        let tx_hash = tx.hash();
+
+                        sb.block_in_process.txs.push(tx);
+                        let tx_index = (sb.block_in_process.txs.len() - 1) as u64;
+
+                        if let Some(mut receipt) = resp.receipt {
+                            receipt.tx_hash = tx_hash.clone();
+                            receipt.tx_index = tx_index;
+                            sb.block_in_process.header.receipts.insert(tx_hash, receipt);
+                        }
+
+                        if let Some(mut log_map) = resp.logs {
+                            for (index, (_, log)) in log_map.iter_mut().enumerate() {
+                                log.tx_index = tx_index;
+                                log.log_index_in_tx = index as u64;
+                            }
+
+                            let mut logs = MapxOrd::new();
+                            log_map.into_iter().for_each(|(tx_hash, log)| {
+                                logs.insert(tx_hash, log);
+                            });
+                            sb.block_in_process.logs = logs;
+                        }
+                    }
+                    Err(e) => {
+                        resp.log = e.to_string();
+                        resp.code = 1;
+                    }
+                };
             } else {
                 resp.log = "Should not appear in ABCI".to_owned();
                 resp.code = 1;
