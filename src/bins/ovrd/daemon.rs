@@ -1,10 +1,6 @@
 use crate::pack::TM_BIN;
 use abci::ServerBuilder;
-use ovr::{
-    cfg::DaemonCfg,
-    rpc::{self, HttpServer, WsServer},
-    App,
-};
+use ovr::{cfg::DaemonCfg, rpc::Web3ServerBuilder, App};
 use ruc::*;
 use std::{
     net::SocketAddr,
@@ -41,15 +37,18 @@ pub fn exec(cfg: DaemonCfg) -> Result<()> {
     s.listen().c(d!())
 }
 
-fn start_web3_service(app: &App) -> Result<(Vec<HttpServer>, Vec<WsServer>)> {
-    let (http_serv_list, ws_serv_list): (Vec<_>, Vec<_>) = app
+fn start_web3_service(app: &App) -> Result<()> {
+    let ((http_serv_list, ws_serv_list), td_addr_list): ((Vec<_>, Vec<_>), Vec<_>) = app
         .cfg
         .serv_addr_list
         .split(',')
         .map(|addr| {
             (
-                format!("{}:{}", addr, app.cfg.serv_http_port),
-                format!("{}:{}", addr, app.cfg.serv_ws_port),
+                (
+                    format!("{}:{}", addr, app.cfg.serv_http_port),
+                    format!("{}:{}", addr, app.cfg.serv_ws_port),
+                ),
+                format!("{}:{}", addr, app.cfg.tendermint_rpc_port),
             )
         })
         .unzip();
@@ -62,8 +61,23 @@ fn start_web3_service(app: &App) -> Result<(Vec<HttpServer>, Vec<WsServer>)> {
         .iter()
         .map(|addr| addr.parse::<SocketAddr>().c(d!()))
         .collect::<Result<Vec<_>>>()?;
+    let td_addr_list = td_addr_list
+        .iter()
+        .map(|addr| addr.parse::<SocketAddr>().c(d!()))
+        .collect::<Result<Vec<_>>>()?;
 
-    rpc::start_web3_service(&http_serv_list, &ws_serv_list).c(d!())
+    let builder = Web3ServerBuilder {
+        upstream: td_addr_list,
+        http: http_serv_list,
+        ws: ws_serv_list,
+        state: app.ledger.state.clone(),
+        kind: app.cfg.kind,
+    };
+
+    let server = builder.build();
+
+    server.start();
+    Ok(())
 }
 
 fn start_tendermint(home: Option<&str>) -> Result<()> {

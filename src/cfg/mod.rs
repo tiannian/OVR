@@ -20,7 +20,7 @@ pub enum Commands {
     #[clap(about = "Run ovr in client mode")]
     Cli(CliCfg),
     #[clap(about = "Run ovr in daemon mode, aka run a node")]
-    Daemon(DaemonCfg),
+    Daemon(Box<DaemonCfg>),
     #[clap(about = "Development utils, create a local env, .etc")]
     Dev(DevCfg),
     #[cfg(target_os = "linux")]
@@ -134,6 +134,10 @@ pub struct DaemonCfg {
     #[cfg(target_os = "linux")]
     #[clap(short = 'C', long, default_value_t = 100)]
     pub snap_cap: u64,
+
+    #[cfg(target_os = "linux")]
+    #[clap(short = 'k', long, help = "Node:0 , Full:1 , Seed:2")]
+    pub kind: Option<u64>,
 }
 
 impl DaemonCfg {

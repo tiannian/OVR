@@ -480,7 +480,7 @@ impl Node {
             Ok(ForkResult::Child) => {
                 let cmd = format!(
                     r"
-                    ovr daemon -a {1} -T {2} -p {3} -w {4} -d {5} >{0}/app.log 2>&1 & \
+                    ovr daemon -a {1} -T {2} -p {3} -w {4} -d {5} -k {6} >{0}/app.log 2>&1 & \
                     tendermint node --home {0} >{0}/tendermint.log 2>&1
                     ",
                     &self.home,
@@ -488,7 +488,8 @@ impl Node {
                     self.ports.tm_rpc,
                     self.ports.web3_http,
                     self.ports.web3_ws,
-                    self.vsdb_base_dir()
+                    self.vsdb_base_dir(),
+                    self.kind.code(),
                 );
                 pnk!(exec_spawn(&cmd));
                 exit(0);
@@ -556,6 +557,16 @@ enum Kind {
     Node,
     Full,
     Seed,
+}
+
+impl Kind {
+    fn code(&self) -> u64 {
+        match self {
+            Kind::Node => 0,
+            Kind::Full => 1,
+            Kind::Seed => 2,
+        }
+    }
 }
 
 /// Active ports of a node

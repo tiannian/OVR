@@ -2,13 +2,21 @@ mod impls;
 mod precompile;
 pub mod tx;
 
-use crate::common::BlockHeight;
+use crate::{
+    common::{block_number_to_height, rollback_to_height, BlockHeight},
+    ethvm::{impls::stack::OvrStackState, precompile::PRECOMPILE_SET},
+};
+use evm::{
+    executor::stack::{StackExecutor, StackSubstateMetadata},
+    ExitReason,
+};
 use impls::backend::OvrBackend;
 use primitive_types::{H160, H256, U256};
 use ruc::*;
 use serde::{Deserialize, Serialize};
 use tx::meta_tokens::Erc20Like;
-use vsdb::{BranchName, MapxOrd, OrphanVs, Vs};
+use vsdb::{BranchName, MapxOrd, OrphanVs, Vs, VsMgmt};
+use web3_rpc_core::types::{BlockNumber, CallRequest};
 
 #[allow(non_snake_case)]
 #[derive(Vs, Clone, Debug, Deserialize, Serialize)]
@@ -26,7 +34,94 @@ pub struct State {
     pub vicinity: OvrVicinity,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CallContractResp {
+    pub evm_resp: ExitReason,
+    pub data: Vec<u8>,
+    pub gas_used: u64,
+}
+
 impl State {
+    pub fn call_contract(
+        &self,
+        branch_name: BranchName,
+        req: CallRequest,
+        bn: Option<BlockNumber>,
+    ) -> Result<CallContractResp> {
+        let caller = if let Some(from) = req.from {
+            from
+        } else {
+            return Err(eg!("caller cannot be empty"));
+        };
+        let address = if let Some(addr) = req.to {
+            addr
+        } else {
+            return Err(eg!("to cannot be empty"));
+        };
+        let value = if let Some(val) = req.value {
+            val
+        } else {
+            return Err(eg!("value cannot be empty"));
+        };
+        let data = if let Some(data) = req.data {
+            data
+        } else {
+            return Err(eg!("data cannot be empty"));
+        };
+        let gas_price = if let Some(gas_price) = req.gas_price {
+            gas_price
+        } else {
+            return Err(eg!("gas_price cannot be empty"));
+        };
+        let gas = if let Some(gas) = req.gas {
+            gas
+        } else {
+            return Err(eg!("gas cannot be empty"));
+        };
+        let gas_limit = gas.checked_div(gas_price).unwrap().as_u64();
+
+        let height = if let Some(bn) = bn {
+            block_number_to_height(bn, None, Some(self))
+        } else if let Some((height, _)) = self.block_hashes.last() {
+            height
+        } else {
+            0
+        };
+
+        let new_branch_name =
+            rollback_to_height(height, None, Some(self), "call_contract")?;
+
+        let backend = OvrBackend {
+            branch: branch_name,
+            state: self.OFUEL.accounts.clone(),
+            storages: self.OFUEL.storages.clone(),
+            block_hashes: self.block_hashes,
+            vicinity: self.vicinity.clone(),
+        };
+
+        let cfg = evm::Config::istanbul();
+        let metadata = StackSubstateMetadata::new(u64::MAX, &cfg);
+
+        let ovr_stack_state = OvrStackState::new(metadata, &backend);
+        let precompiles = PRECOMPILE_SET.clone();
+        let mut executor =
+            StackExecutor::new_with_precompiles(ovr_stack_state, &cfg, &precompiles);
+
+        let resp =
+            executor.transact_call(caller, address, value, data.0, gas_limit, vec![]);
+
+        ruc::d!(format!("{:?}", resp));
+
+        let cc_resp = CallContractResp {
+            evm_resp: resp.0,
+            data: resp.1,
+            gas_used: executor.used_gas(),
+        };
+
+        self.branch_remove(BranchName::from(new_branch_name.as_str()))?;
+        Ok(cc_resp)
+    }
+
     #[inline(always)]
     fn get_backend_hdr<'a>(&self, branch: BranchName<'a>) -> OvrBackend<'a> {
         OvrBackend {

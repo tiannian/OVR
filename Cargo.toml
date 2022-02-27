@@ -21,6 +21,8 @@ path = "src/bins/ovrd/main.rs"
 ruc = { version = "1.0.5", features = ["cmd"] }
 btm = "0.6.2"
 vsdb = { version = "0.15.2", default-features = false, features = ["cbor_codec"] }
+reqwest = { version = "0.11", features = ["json"]}
+hex = "0.4.3"
 
 clap = { version = "3.0.14", features = ["derive"] }
 nix = "0.23.1"
@@ -56,6 +58,7 @@ jsonrpc-derive = "18.0"
 evm = { version = "0.33.1", default-features = false, features = ["with-serde"] }
 ethereum = { version = "0.11.1", default-features = false, features = ["with-serde"] }
 primitive-types = { version = "0.10.1", default-features = false, features = ["rlp", "byteorder", "serde"] }
+ethereum-types = "0.12"
 
 eth-utils = "0.1.1"
 
@@ -70,11 +73,10 @@ fevm-precompile-simple = { package = "pallet-evm-precompile-simple", git = "http
 # fevm-precompile-dispatch = { package = "pallet-evm-precompile-dispatch", git = "https://github.com/ccmlm/frontier", tag = "ovr-p1" }
 
 # deps of web3-rpc
-f-rpc-core = { package = "fp-rpc-core", git = "https://github.com/ccmlm/platform.git", branch = "web3-rpc" }
-f-rpc-server = { package = "fp-rpc-server", git = "https://github.com/ccmlm/platform.git", branch = "web3-rpc"}
-f-utils = { package = "fp-utils", git = "https://github.com/ccmlm/platform.git", branch = "web3-rpc"}
 rustc-hex = "2.1.0"
 log = "0.4.14"
+web3-rpc-core = { git = "https://github.com/ovr-defi/web3-rpc-core.git" }
+byte-slice-cast = "1.2.0"
 
 [features]
 default = ["vsdb_sled"]

@@ -4,6 +4,7 @@
 
 #![allow(warnings)]
 
+use crate::ledger::State;
 use crate::{
     cfg::DaemonCfg as Cfg,
     common::{BlockHeight, HashValue},
@@ -24,8 +25,8 @@ use vsdb::MapxOrd;
 
 #[derive(Clone)]
 pub struct App {
-    ledger: Ledger,
     pub cfg: Cfg,
+    pub ledger: Ledger,
 }
 
 impl App {
@@ -40,14 +41,13 @@ impl App {
         )
         .c(d!())?;
 
-        Ok(Self { ledger, cfg })
+        Ok(Self { cfg, ledger })
     }
 
     pub fn load_or_create(cfg: Cfg) -> Result<Self> {
         cfg.set_vsdb_base_dir().c(d!())?;
-
         if let Some(ledger) = Ledger::load_from_snapshot().c(d!())? {
-            Ok(Self { ledger, cfg })
+            Ok(Self { cfg, ledger })
         } else {
             Self::new(cfg).c(d!())
         }
@@ -110,7 +110,6 @@ impl Application for App {
     fn check_tx(&self, req: RequestCheckTx) -> ResponseCheckTx {
         let mut resp = ResponseCheckTx::default();
         alt!(0 != req.r#type, return resp);
-
         if let Ok(tx) = Tx::deserialize(&req.tx) {
             if tx.valid_in_abci() {
                 let mut sb = self.ledger.check_tx.write();
@@ -146,6 +145,7 @@ impl Application for App {
         let mut resp = ResponseDeliverTx::default();
 
         if let Ok(tx) = Tx::deserialize(&req.tx) {
+            println!("tx is ->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>{:?}", tx);
             if tx.valid_in_abci() {
                 let mut sb = self.ledger.deliver_tx.write();
                 match sb.apply_tx(tx.clone()) {

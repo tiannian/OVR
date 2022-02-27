@@ -26,7 +26,7 @@ use vsdb::{
     VsMgmt, INITIAL_VERSION,
 };
 
-const MAIN_BRANCH_NAME: BranchName = BranchName(b"Main");
+pub const MAIN_BRANCH_NAME: BranchName = BranchName(b"Main");
 const DELIVER_TX_BRANCH_NAME: BranchName = BranchName(b"DeliverTx");
 const CHECK_TX_BRANCH_NAME: BranchName = BranchName(b"CheckTx");
 
@@ -583,7 +583,7 @@ pub struct TxMerkle {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct VsVersion {
+pub struct VsVersion {
     block_height: u64,
     // NOTE:
     // - starting from 1
@@ -592,7 +592,7 @@ struct VsVersion {
 }
 
 impl VsVersion {
-    fn new(block_height: BlockHeight, tx_position: u64) -> Self {
+    pub fn new(block_height: BlockHeight, tx_position: u64) -> Self {
         Self {
             block_height,
             tx_position,
