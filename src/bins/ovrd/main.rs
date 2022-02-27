@@ -17,6 +17,8 @@ pub struct Cfg {
 pub enum Commands {
     #[clap(about = "Run ovr in daemon mode")]
     Daemon(DaemonCfg),
+    #[clap(about = "An alias of `ovr daemon`")]
+    Node(DaemonCfg),
     #[clap(about = "Pack tendermint into the ovrd binary")]
     Pack,
     #[clap(about = "Unpack tendermint from the ovrd binary")]
@@ -27,7 +29,7 @@ fn main() {
     let config = Cfg::parse();
 
     match config.commands {
-        Commands::Daemon(cfg) => {
+        Commands::Daemon(cfg) | Commands::Node(cfg) => {
             pnk!(pack::unpack());
             pnk!(daemon::exec(cfg));
         }

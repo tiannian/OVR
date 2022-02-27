@@ -48,8 +48,14 @@ build: tendermint
 
 release: build_release
 
+release_rocksdb: build_release_rocksdb
+
 build_release: tendermint
 	cargo build --release --bins
+	$(call pack,release)
+
+build_release_rocksdb: tendermint
+	cargo build --release --bins --no-default-features --features="vsdb_rocksdb"
 	$(call pack,release)
 
 build_release_musl: tendermint

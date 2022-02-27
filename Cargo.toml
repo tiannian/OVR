@@ -20,7 +20,7 @@ path = "src/bins/ovrd/main.rs"
 [dependencies]
 ruc = { version = "1.0.5", features = ["cmd"] }
 btm = "0.6.2"
-vsdb = "0.15.2"
+vsdb = { version = "0.15.2", default-features = false, features = ["cbor_codec"] }
 
 clap = { version = "3.0.14", features = ["derive"] }
 nix = "0.23.1"
@@ -75,6 +75,11 @@ f-rpc-server = { package = "fp-rpc-server", git = "https://github.com/ccmlm/plat
 f-utils = { package = "fp-utils", git = "https://github.com/ccmlm/platform.git", branch = "web3-rpc"}
 rustc-hex = "2.1.0"
 log = "0.4.14"
+
+[features]
+default = ["vsdb_sled"]
+vsdb_sled = ["vsdb/sled_engine"]
+vsdb_rocksdb = ["vsdb/rocks_engine"]
 
 [dev-dependencies]
 criterion = { version = "0.3", features = ["html_reports"]}
