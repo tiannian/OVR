@@ -90,21 +90,20 @@ impl Application for App {
     }
 
     fn init_chain(&self, req: RequestInitChain) -> ResponseInitChain {
-        let token_distribution = pnk!(serde_json::from_slice::<BTreeMap<H160, U256>>(
-            &req.app_state_bytes
-        ));
-
-        for (addr, am) in token_distribution.into_iter() {
-            pnk!(
-                self.ledger
-                    .state
-                    .evm
-                    .OFUEL
-                    .accounts
-                    .insert(addr, OvrAccount::from_balance(am))
-            );
+        if !req.app_state_bytes.is_empty() {
+            let token_dists: BTreeMap<H160, U256> =
+                pnk!(serde_json::from_slice(&req.app_state_bytes));
+            for (addr, am) in token_dists.into_iter() {
+                pnk!(
+                    self.ledger
+                        .state
+                        .evm
+                        .OFUEL
+                        .accounts
+                        .insert(addr, OvrAccount::from_balance(am))
+                );
+            }
         }
-
         ResponseInitChain::default()
     }
 

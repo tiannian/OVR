@@ -13,6 +13,10 @@ license = "MIT"
 name = "ovr"
 path = "src/bins/ovr/main.rs"
 
+[[bin]]
+name = "ovrd"
+path = "src/bins/ovrd/main.rs"
+
 [dependencies]
 ruc = { version = "1.0.5", features = ["cmd"] }
 btm = "0.6.2"

@@ -35,31 +35,37 @@ pub struct DaemonCfg {
         default_value_t = 9527,
         help = "The ID of your chain, an unsigned integer"
     )]
-    pub(crate) chain_id: u64,
+    pub chain_id: u64,
     #[clap(
         long,
         default_value_t = String::from("NULL"),
         help = "A custom name of your chain"
     )]
-    pub(crate) chain_name: String,
+    pub chain_name: String,
     #[clap(
         long,
         default_value_t = String::from("NULL"),
         help = "A custom version of your chain"
     )]
-    pub(crate) chain_version: String,
+    pub chain_version: String,
     #[clap(long, help = "Basic gas price of the evm transactions")]
-    pub(crate) gas_price: Option<u128>,
+    pub gas_price: Option<u128>,
     #[clap(long, help = "The limitation of the total gas of any block")]
-    pub(crate) block_gas_limit: Option<u128>,
+    pub block_gas_limit: Option<u128>,
     #[clap(
         short = 'd',
         long,
         help = "A path where all data will be stored in [default: ~/.vsdb]"
     )]
-    pub(crate) vsdb_base_dir: Option<String>,
+    pub vsdb_base_dir: Option<String>,
+    #[clap(
+        short = 'H',
+        long,
+        help = "A path where tendermint will run in [default: ~/.tendermint]"
+    )]
+    pub tendermint_home_dir: Option<String>,
     #[clap(long, help = "A field for EIP1559")]
-    pub(crate) block_base_fee_per_gas: Option<u128>,
+    pub block_base_fee_per_gas: Option<u128>,
 
     #[clap(
         short = 'A',
@@ -133,12 +139,12 @@ pub struct DaemonCfg {
 impl DaemonCfg {
     #[inline(always)]
     #[cfg(target_os = "linux")]
-    pub(crate) fn snapshot(&self, height: BlockHeight) -> Result<()> {
+    pub fn snapshot(&self, height: BlockHeight) -> Result<()> {
         BtmCfg::try_from(self).c(d!())?.snapshot(height).c(d!())
     }
 
     #[inline(always)]
-    pub(crate) fn set_vsdb_base_dir(&self) -> Result<()> {
+    pub fn set_vsdb_base_dir(&self) -> Result<()> {
         if let Some(dir) = self.vsdb_base_dir.clone() {
             vsdb::vsdb_set_base_dir(dir).c(d!())?;
         }

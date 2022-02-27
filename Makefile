@@ -29,12 +29,17 @@ doc:
 
 define pack
 	- rm -rf $(1)
-	- rm ~/.cargo/bin/{ovr,tendermint}
+	- rm ~/.cargo/bin/{ovr,ovrd,tendermint}
 	mkdir $(1)
-	cp ./target/$(2)/$(1)/ovr \
+	cp \
+		./target/$(2)/$(1)/ovr \
+		./target/$(2)/$(1)/ovrd \
 		$(shell go env GOPATH)/bin/tendermint \
 		$(1)/
 	cp $(1)/* ~/.cargo/bin/
+	cd $(1)/ && ./ovrd pack
+	cp -f /tmp/ovrd $(1)/
+	cp -f /tmp/ovrd ~/.cargo/bin/
 endef
 
 build: tendermint
