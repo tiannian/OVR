@@ -203,7 +203,7 @@ pub struct DevCfg {
         short = 'N',
         long,
         default_value_t = 3,
-        help = "how many validator nodes should be created"
+        help = "How many validators should be created"
     )]
     pub validator_num: u8,
 }

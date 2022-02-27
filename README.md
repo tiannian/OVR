@@ -2,7 +2,7 @@
 ![GitHub issues](https://img.shields.io/github/issues-raw/ccmlm/OVR)
 ![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/ccmlm/OVR)
 ![GitHub Workflow Status](https://img.shields.io/github/workflow/status/ccmlm/OVR/Rust)
-[![Minimum rustc version](https://img.shields.io/badge/rustc-1.59+-lightgray.svg)](https://github.com/rust-random/rand#rust-version-requirements)
+![Minimum rustc version](https://img.shields.io/badge/rustc-1.59+-lightgray.svg)
 
 # OVR
 
@@ -40,7 +40,7 @@ OPTIONS:
     -V, --version    Print version information
 
 SUBCOMMANDS:
-    client    Run ovr in client mode
+    cli       Run ovr in client mode
     daemon    Run ovr in daemon mode, aka run a node
     dev       Development utils, create a local env, .etc
     help      Print this message or the help of the given subcommand(s)
@@ -63,12 +63,13 @@ OPTIONS:
     -i, --env-info
     -I, --block-itv-secs <BLOCK_ITV_SECS>    [default: 1]
     -n, --env-name <ENV_NAME>
+    -N, --validator-num <VALIDATOR_NUM>      How many validators should be created [default: 3]
     -r, --env-rm-node
     -s, --env-start
     -S, --env-stop
 ```
 
-Generate new accounts:
+Generate a new account:
 
 ```shell
 # ovr cli -g
