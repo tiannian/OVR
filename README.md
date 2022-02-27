@@ -1,7 +1,7 @@
-![GitHub top language](https://img.shields.io/github/languages/top/ccmlm/OVR)
-![GitHub issues](https://img.shields.io/github/issues-raw/ccmlm/OVR)
-![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/ccmlm/OVR)
-![GitHub Workflow Status](https://img.shields.io/github/workflow/status/ccmlm/OVR/Rust)
+![GitHub top language](https://img.shields.io/github/languages/top/ovr-defi/OVR)
+![GitHub issues](https://img.shields.io/github/issues-raw/ovr-defi/OVR)
+![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/ovr-defi/OVR)
+![GitHub Workflow Status](https://img.shields.io/github/workflow/status/ovr-defi/OVR/Rust)
 ![Minimum rustc version](https://img.shields.io/badge/rustc-1.59+-lightgray.svg)
 
 # OVR
