@@ -69,3 +69,36 @@ tendermint:
 
 prodenv:
 	bash tools/create_prod_env.sh
+
+
+# CI 
+ci_build_binary_rust_base:
+	docker build -t binary-rust-base -f container/Dockerfile-binary-rust-base .
+
+ci_build_release_binary_image:
+	sed -i "s/^ENV VERGEN_SHA_EXTERN .*/ENV VERGEN_SHA_EXTERN ${VERGEN_SHA_EXTERN}/g" container/Dockerfile-binary-image-release
+	docker build -t ovr-binary-image:$(IMAGE_TAG) -f container/Dockerfile-binary-image-release .
+
+ci_build_image:
+	@ if [ -d "./binary" ]; then \
+		rm -rf ./binary || true; \
+	fi
+	@ docker run --rm -d --name ovr-binary ovrd-binary-image:$(IMAGE_TAG)
+	@ docker cp ovrd-binary:/binary ./binary
+	@ docker rm -f ovrd-binary
+	@ docker build -t $(PUBLIC_ECR_URL)/$(ENV)/ovrd:$(IMAGE_TAG) -f container/Dockerfile-cleveldb .
+ifeq ($(ENV),release)
+	docker tag $(PUBLIC_ECR_URL)/$(ENV)/ovrd:$(IMAGE_TAG) $(PUBLIC_ECR_URL)/$(ENV)/ovrd:latest
+endif
+
+ci_push_image:
+	docker push $(PUBLIC_ECR_URL)/$(ENV)/ovrd:$(IMAGE_TAG)
+ifeq ($(ENV),release)
+	docker push $(PUBLIC_ECR_URL)/$(ENV)/ovrd:latest
+endif
+
+clean_image:
+	docker rmi $(PUBLIC_ECR_URL)/$(ENV)/ovrd:$(IMAGE_TAG)
+ifeq ($(ENV),release)
+	docker rmi $(PUBLIC_ECR_URL)/$(ENV)/ovrd:latest
+endif
