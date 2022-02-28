@@ -23,7 +23,6 @@ use super::error;
 pub(crate) struct EthApiImpl {
     pub upstream: String,
     pub state: State,
-    pub kind: Option<u64>,
 }
 
 impl EthApi for EthApiImpl {
@@ -169,21 +168,7 @@ impl EthApi for EthApiImpl {
     fn is_mining(&self) -> BoxFuture<Result<bool>> {
         // is validator?
 
-        let kind = self.kind;
-        Box::pin(async move {
-            let r;
-
-            if let Some(kind) = kind {
-                match kind {
-                    0 => r = Ok(true),
-                    _ => r = Ok(false),
-                }
-            } else {
-                r = Err(new_jsonrpc_error("unknown node kind", Value::Null));
-            }
-
-            r
-        })
+        Box::pin(async move { Ok(true) })
     }
 
     fn gas_price(&self) -> BoxFuture<Result<U256>> {
@@ -357,10 +342,9 @@ impl EthApi for EthApiImpl {
         let b = if let Some(block) = self.state.blocks.get(&height) {
             let proposer = tm_proposer_to_evm_format(&block.header.proposer);
 
-            let b;
-            if is_complete {
+            let b = if is_complete {
                 // TODO: To be filled
-                b = Block {
+                Block {
                     hash: Some(H256::from_slice(block.header_hash.as_slice())),
                     parent_hash: H256::from_slice(block.header.prev_hash.as_slice()),
                     uncles_hash: Default::default(), //Not required
@@ -383,9 +367,9 @@ impl EthApi for EthApiImpl {
                     uncles: vec![],                 //Not required
                     transactions: BlockTransactions::Full(vec![]), //missing data
                     size: None,                     //missing data
-                };
+                }
             } else {
-                b = Block {
+                Block {
                     hash: None,
                     parent_hash: Default::default(),
                     uncles_hash: Default::default(),
@@ -406,8 +390,8 @@ impl EthApi for EthApiImpl {
                     uncles: vec![],
                     transactions: BlockTransactions::Hashes(vec![]),
                     size: None,
-                };
-            }
+                }
+            };
 
             b
         } else {

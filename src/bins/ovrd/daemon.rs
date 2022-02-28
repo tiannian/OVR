@@ -71,7 +71,6 @@ fn start_web3_service(app: &App) -> Result<()> {
         http: http_serv_list,
         ws: ws_serv_list,
         state: app.ledger.state.clone(),
-        kind: app.cfg.kind,
     };
 
     let server = builder.build();

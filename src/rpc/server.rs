@@ -10,7 +10,6 @@ pub struct Web3ServerBuilder {
     pub http: Vec<SocketAddr>,
     pub ws: Vec<SocketAddr>,
     pub state: State,
-    pub kind: Option<u64>,
 }
 
 impl Web3ServerBuilder {
@@ -26,7 +25,6 @@ impl Web3ServerBuilder {
             let eth = EthApiImpl {
                 upstream: format!("http://{}", upstream),
                 state: self.state.clone(),
-                kind: self.kind,
             };
 
             let net = NetApiImpl {};
@@ -58,7 +56,6 @@ impl Web3ServerBuilder {
             let eth = EthApiImpl {
                 upstream: format!("http://{}", upstream),
                 state: self.state.clone(),
-                kind: self.kind,
             };
 
             let net = NetApiImpl {};
