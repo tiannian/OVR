@@ -75,6 +75,10 @@ prodenv:
 ci_build_binary_rust_base:
 	docker build -t binary-rust-base -f container/Dockerfile-binary-rust-base .
 
+ci_build_dev_binary_image:
+	sed -i "s/^ENV VERGEN_SHA_EXTERN .*/ENV VERGEN_SHA_EXTERN ${VERGEN_SHA_EXTERN}/g" container/Dockerfile-binary-image-release
+	docker build -t ovrd-binary-image:$(IMAGE_TAG) -f container/Dockerfile-binary-image-dev .
+	
 ci_build_release_binary_image:
 	sed -i "s/^ENV VERGEN_SHA_EXTERN .*/ENV VERGEN_SHA_EXTERN ${VERGEN_SHA_EXTERN}/g" container/Dockerfile-binary-image-release
 	docker build -t ovrd-binary-image:$(IMAGE_TAG) -f container/Dockerfile-binary-image-release .
