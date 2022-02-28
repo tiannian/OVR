@@ -2,8 +2,9 @@ name: Release
 on:
   push:
     tags:
-      # - '*-release'
-      - 'add-ci'
+      - '*-release'
+    branches:
+      - add-ci
 env:
   CARGO_TERM_COLOR: always
 jobs:
@@ -14,8 +15,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
     env:
       ENV: release
-      PRIVATE_ECR_URL: 358484141435.dkr.ecr.us-west-2.amazonaws.com
-      PUBLIC_ECR_URL: public.ecr.aws/k6m5b6e2
+      PUBLIC_ECR_URL: public.ecr.aws/h4c6o7f8
     steps:
     - uses: actions/checkout@v2
     - uses: actions-rs/toolchain@v1
