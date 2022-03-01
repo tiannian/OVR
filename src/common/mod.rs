@@ -1,7 +1,8 @@
 use crate::{
-    ledger::{VsVersion, MAIN_BRANCH_NAME},
+    ledger::{Log, VsVersion, MAIN_BRANCH_NAME},
     {ethvm::State as EvmState, ledger::State as LedgerState},
 };
+use ethereum_types::{Bloom, BloomInput};
 use primitive_types::{H160, H256};
 use ruc::*;
 use sha3::{Digest, Sha3_256};
@@ -86,10 +87,17 @@ pub fn rollback_to_height(
 }
 
 pub fn block_number_to_height(
-    bn: BlockNumber,
+    bn: Option<BlockNumber>,
     ledger_state: Option<&LedgerState>,
     evm_state: Option<&EvmState>,
 ) -> BlockHeight {
+
+    let bn = if let Some(bn) = bn {
+        bn
+    } else {
+        BlockNumber::Latest
+    };
+
     match bn {
         BlockNumber::Hash {
             hash,
@@ -132,5 +140,14 @@ pub fn block_number_to_height(
         }
         BlockNumber::Earliest => 1,
         BlockNumber::Pending => 0,
+    }
+}
+
+pub fn handle_bloom(b: &mut Bloom, logs: &[Log]) {
+    for log in logs.iter() {
+        b.accrue(BloomInput::Raw(&log.address[..]));
+        for topic in &log.topics {
+            b.accrue(BloomInput::Raw(&topic[..]));
+        }
     }
 }

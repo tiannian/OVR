@@ -1,19 +1,26 @@
-use crate::common::{
-    block_number_to_height, rollback_to_height, tm_proposer_to_evm_format,
+use crate::{
+    common::{
+        block_number_to_height, rollback_to_height, tm_proposer_to_evm_format, HashValue,
+    },
+    ledger::{State, MAIN_BRANCH_NAME},
+    rpc::{
+        error::new_jsonrpc_error,
+        utils::{
+            filter_block_logs, remove_branch_by_name, rollback_by_height, tx_to_web3_tx,
+        },
+    },
+    tx::Tx,
 };
-use crate::ledger::{State, MAIN_BRANCH_NAME};
-use crate::rpc::error::new_jsonrpc_error;
-use crate::rpc::utils::{remove_branch_by_name, rollback_by_height};
 use byte_slice_cast::AsByteSlice;
-use ethereum_types::{H160, H256, H64, U256, U64};
+use ethereum_types::{Bloom, H160, H256, H64, U256, U64};
 use jsonrpc_core::{BoxFuture, Result};
 use serde_json::Value;
 use std::result::Result::Err;
-use web3_rpc_core::types::{Block, BlockTransactions, SyncInfo};
 use web3_rpc_core::{
     types::{
-        BlockNumber, Bytes, CallRequest, Filter, Index, Log, Receipt, RichBlock,
-        SyncStatus, Transaction, TransactionRequest, Work,
+        Block, BlockNumber, BlockTransactions, Bytes, CallRequest, Filter,
+        FilteredParams, Index, Log, Receipt, RichBlock, SyncInfo, SyncStatus,
+        Transaction, TransactionRequest, Work,
     },
     EthApi,
 };
@@ -273,6 +280,16 @@ impl EthApi for EthApiImpl {
 
                     let proposer = tm_proposer_to_evm_format(&block.header.proposer);
 
+                    let receipt = if let Some((_, receipt)) =
+                        block.header.receipts.last()
+                    {
+                        receipt
+                    } else {
+                        return Box::pin(async {
+                            Err(new_jsonrpc_error("this block no receipt!", Value::Null))
+                        });
+                    };
+
                     // TODO: To be filled
                     b = Block {
                         hash: Some(H256::from_slice(block.header_hash.as_slice())),
@@ -280,16 +297,16 @@ impl EthApi for EthApiImpl {
                         uncles_hash: Default::default(), //Not required
                         author: proposer,
                         miner: proposer,
-                        state_root: Default::default(), //missing data?
+                        state_root: Default::default(), //Not required
                         transactions_root: H256::from_slice(
                             block.header.tx_merkle.root_hash.as_slice(),
                         ),
-                        receipts_root: Default::default(), //missing data
+                        receipts_root: Default::default(), //Not required
                         number: Some(U256::from(height)),
-                        gas_used: Default::default(), //missing data
+                        gas_used: receipt.block_gas_used, //missing data
                         gas_limit: self.state.evm.block_gas_limit.get_value(),
                         extra_data: Default::default(), //Not required
-                        logs_bloom: None,               //Not required
+                        logs_bloom: Some(Bloom::from_slice(block.bloom.as_slice())), //Not required
                         timestamp: U256::from(block.header.timestamp),
                         difficulty: Default::default(), //Not required
                         total_difficulty: Default::default(), //Not required
@@ -323,7 +340,7 @@ impl EthApi for EthApiImpl {
         bn: BlockNumber,
         is_complete: bool,
     ) -> BoxFuture<Result<Option<RichBlock>>> {
-        let height = block_number_to_height(bn, None, Some(&self.state.evm));
+        let height = block_number_to_height(Some(bn), None, Some(&self.state.evm));
 
         let r =
             rollback_to_height(height, None, Some(&self.state.evm), "block_by_number");
@@ -417,29 +434,128 @@ impl EthApi for EthApiImpl {
         })
     }
 
-    // TODO: impl tx Storage first and than impl this interface
     fn transaction_count(
         &self,
-        _: H160,
-        _: Option<BlockNumber>,
+        addr: H160,
+        bn: Option<BlockNumber>,
     ) -> BoxFuture<Result<U256>> {
-        Box::pin(async { Ok(Default::default()) })
+        let height = block_number_to_height(bn, Some(&self.state), None);
+        let new_branch_name = match rollback_to_height(
+            height,
+            Some(&self.state),
+            None,
+            "transaction_count",
+        ) {
+            Ok(name) => name,
+            Err(e) => {
+                return Box::pin(async move {
+                    Err(new_jsonrpc_error(
+                        "rollback to height",
+                        Value::String(e.to_string()),
+                    ))
+                });
+            }
+        };
+
+        let mut tx_count = 0;
+
+        if let Some(block) = self.state.blocks.get(&height) {
+            for tx in block.txs.iter() {
+                match tx {
+                    Tx::Evm(evm_tx) => {
+                        // Judgement from or to
+                        let (from, to) = evm_tx.get_from_to();
+                        if let Some(from) = from {
+                            if from.eq(&addr) {
+                                tx_count += 1;
+                                continue;
+                            }
+                        }
+
+                        if let Some(to) = to {
+                            if to.eq(&addr) {
+                                tx_count += 1;
+                                continue;
+                            }
+                        }
+                    }
+                    Tx::Native(_) => {
+                        continue;
+                    }
+                };
+            }
+        } else {
+            return Box::pin(async move {
+                Err(new_jsonrpc_error(
+                    "there is no corresponding block under this height",
+                    Value::String(height.to_string()),
+                ))
+            });
+        }
+
+        if let Err(e) = remove_branch_by_name(new_branch_name, Some(&self.state), None) {
+            return Box::pin(async { Err(e) });
+        }
+
+        Box::pin(async move { Ok(U256::from(tx_count)) })
     }
 
-    // TODO: impl tx Storage first and than impl this interface
     fn block_transaction_count_by_hash(
         &self,
-        _: H256,
+        block_hash: H256,
     ) -> BoxFuture<Result<Option<U256>>> {
-        Box::pin(async { Ok(Default::default()) })
+        let mut tx_count = 0;
+
+        for (_, block) in self.state.blocks.iter() {
+            if block.header_hash == block_hash.as_bytes() {
+                tx_count = block.txs.len();
+            }
+        }
+
+        Box::pin(async move { Ok(Some(U256::from(tx_count))) })
     }
 
-    // TODO: impl tx Storage first and than impl this interface
     fn block_transaction_count_by_number(
         &self,
-        _: BlockNumber,
+        bn: BlockNumber,
     ) -> BoxFuture<Result<Option<U256>>> {
-        Box::pin(async { Ok(Default::default()) })
+        let height = block_number_to_height(Some(bn), Some(&self.state), None);
+
+        let new_branch_name = match rollback_to_height(
+            height,
+            Some(&self.state),
+            None,
+            "block_transaction_count_by_number",
+        ) {
+            Ok(name) => name,
+            Err(e) => {
+                return Box::pin(async move {
+                    Err(new_jsonrpc_error(
+                        "rollback to height",
+                        Value::String(e.to_string()),
+                    ))
+                });
+            }
+        };
+
+        let tx_count = if let Some(block) = self.state.blocks.get(&height) {
+            block.txs.len()
+        } else {
+            return Box::pin(async move {
+                Err(new_jsonrpc_error(
+                    "there is no corresponding block under this height",
+                    Value::String(height.to_string()),
+                ))
+            });
+        };
+
+        if let Err(e) =
+            remove_branch_by_name(new_branch_name, None, Some(&self.state.evm))
+        {
+            return Box::pin(async { Err(e) });
+        }
+
+        Box::pin(async move { Ok(Some(U256::from(tx_count))) })
     }
 
     fn code_at(&self, addr: H160, bn: Option<BlockNumber>) -> BoxFuture<Result<Bytes>> {
@@ -543,36 +659,227 @@ impl EthApi for EthApiImpl {
         Box::pin(async { r })
     }
 
-    // TODO: impl tx Storage first and than impl this interface
-    fn transaction_by_hash(&self, _: H256) -> BoxFuture<Result<Option<Transaction>>> {
-        Box::pin(async { Ok(Default::default()) })
+    fn transaction_by_hash(
+        &self,
+        tx_hash: H256,
+    ) -> BoxFuture<Result<Option<Transaction>>> {
+        let mut transaction = None;
+
+        'outer: for (height, block) in self.state.blocks.iter() {
+            for (index, tx) in block.txs.iter().enumerate() {
+                if tx.hash() == tx_hash.as_bytes() {
+                    match tx_to_web3_tx(
+                        &tx,
+                        &block,
+                        height,
+                        index,
+                        self.state.chain_id.get_value(),
+                    ) {
+                        Ok(op) => {
+                            transaction = op;
+                            break 'outer;
+                        }
+                        Err(e) => {
+                            return Box::pin(async { Err(e) });
+                        }
+                    }
+                }
+            }
+        }
+
+        Box::pin(async { Ok(transaction) })
     }
 
-    // TODO: impl tx Storage first and than impl this interface
     fn transaction_by_block_hash_and_index(
         &self,
-        _: H256,
-        _: Index,
+        block_hash: H256,
+        index: Index,
     ) -> BoxFuture<Result<Option<Transaction>>> {
-        Box::pin(async { Ok(Default::default()) })
+        let mut transaction = None;
+
+        for (height, block) in self.state.blocks.iter() {
+            if block.header_hash == block_hash.as_bytes() {
+                if let Some(tx) = block.txs.get(index.value()) {
+                    match tx_to_web3_tx(
+                        &tx,
+                        &block,
+                        height,
+                        index.value(),
+                        self.state.chain_id.get_value(),
+                    ) {
+                        Ok(op) => {
+                            transaction = op;
+                            break;
+                        }
+                        Err(e) => {
+                            return Box::pin(async { Err(e) });
+                        }
+                    }
+                }
+            }
+        }
+
+        Box::pin(async { Ok(transaction) })
     }
 
-    // TODO: impl tx Storage first and than impl this interface
     fn transaction_by_block_number_and_index(
         &self,
-        _: BlockNumber,
-        _: Index,
+        bn: BlockNumber,
+        index: Index,
     ) -> BoxFuture<Result<Option<Transaction>>> {
-        Box::pin(async { Ok(Default::default()) })
+        let height = block_number_to_height(Some(bn), Some(&self.state), None);
+        let new_branch_name = match rollback_to_height(
+            height,
+            Some(&self.state),
+            None,
+            "transaction_by_block_number_and_index",
+        ) {
+            Ok(name) => name,
+            Err(e) => {
+                return Box::pin(async move {
+                    Err(new_jsonrpc_error(
+                        "rollback to height",
+                        Value::String(e.to_string()),
+                    ))
+                });
+            }
+        };
+
+        let mut transaction = None;
+
+        if let Some(block) = self.state.blocks.get(&height) {
+            if let Some(tx) = block.txs.get(index.value()) {
+                match tx_to_web3_tx(
+                    &tx,
+                    &block,
+                    height,
+                    index.value(),
+                    self.state.chain_id.get_value(),
+                ) {
+                    Ok(op) => {
+                        transaction = op;
+                    }
+                    Err(e) => {
+                        return Box::pin(async { Err(e) });
+                    }
+                }
+            }
+        } else {
+            return Box::pin(async move {
+                Err(new_jsonrpc_error(
+                    "there is no corresponding block under this height",
+                    Value::String(height.to_string()),
+                ))
+            });
+        }
+
+        if let Err(e) =
+            remove_branch_by_name(new_branch_name, None, Some(&self.state.evm))
+        {
+            return Box::pin(async { Err(e) });
+        }
+
+        Box::pin(async { Ok(transaction) })
     }
 
-    // TODO: impl tx Storage first and than impl this interface
-    fn transaction_receipt(&self, _: H256) -> BoxFuture<Result<Option<Receipt>>> {
-        Box::pin(async { Ok(Default::default()) })
+    fn transaction_receipt(&self, tx_hash: H256) -> BoxFuture<Result<Option<Receipt>>> {
+        let mut op = None;
+
+        for (height, block) in self.state.blocks.iter() {
+            let hash = HashValue::from(tx_hash.as_bytes());
+            let block_hash = H256::from_slice(block.header_hash.as_slice());
+
+            if let Some(r) = block.header.receipts.get(&hash) {
+                let mut logs = vec![];
+
+                for l in r.logs {
+                    logs.push(Log {
+                        address: l.address,
+                        topics: l.topics,
+                        data: Bytes::new(l.data),
+                        block_hash: Some(block_hash),
+                        block_number: Some(U256::from(height)),
+                        transaction_hash: Some(tx_hash),
+                        transaction_index: Some(U256::from(l.tx_index)),
+                        log_index: Some(U256::from(l.log_index_in_block)),
+                        transaction_log_index: Some(U256::from(l.log_index_in_tx)),
+                        removed: false,
+                    });
+                }
+
+                op.replace(Receipt {
+                    transaction_hash: Some(tx_hash),
+                    transaction_index: Some(U256::from(r.tx_index)),
+                    block_hash: Some(block_hash),
+                    from: r.from,
+                    to: r.to,
+                    block_number: Some(U256::from(height)),
+                    cumulative_gas_used: r.block_gas_used,
+                    gas_used: Some(r.tx_gas_used),
+                    contract_address: r.contract_addr,
+                    logs,
+                    state_root: None,
+                    logs_bloom: Default::default(),
+                    status_code: None,
+                });
+            }
+        }
+
+        Box::pin(async { Ok(op) })
     }
 
-    fn logs(&self, _: Filter) -> BoxFuture<Result<Vec<Log>>> {
-        Box::pin(async { Ok(Default::default()) })
+    fn logs(&self, filter: Filter) -> BoxFuture<Result<Vec<Log>>> {
+        let mut logs = vec![];
+
+        if let Some(hash) = filter.block_hash {
+            for (height, block) in self.state.blocks.iter() {
+                if block.header_hash == hash.as_bytes() {
+                    logs.append(&mut filter_block_logs(&block, &filter, height));
+                    break;
+                }
+            }
+        } else {
+            let (current_height, _) = self.state.blocks.last().unwrap_or_default();
+
+            let mut to =
+                block_number_to_height(filter.to_block.clone(), Some(&self.state), None);
+            if to > current_height {
+                to = current_height;
+            }
+
+            let mut from = block_number_to_height(
+                filter.from_block.clone(),
+                Some(&self.state),
+                None,
+            );
+            if from > current_height {
+                from = current_height;
+            }
+
+            let topics_input = if filter.topics.is_some() {
+                let filtered_params = FilteredParams::new(Some(filter.clone()));
+                Some(filtered_params.flat_topics)
+            } else {
+                None
+            };
+
+            let address_bloom_filter =
+                FilteredParams::addresses_bloom_filter(&filter.address);
+            let topic_bloom_filters = FilteredParams::topics_bloom_filter(&topics_input);
+
+            for height in from..=to {
+                if let Some(block) = self.state.blocks.get(&height) {
+                    let b = Bloom::from_slice(block.bloom.as_slice());
+                    if FilteredParams::address_in_bloom(b, &address_bloom_filter)
+                        && FilteredParams::topics_in_bloom(b, &topic_bloom_filters)
+                    {
+                        logs.append(&mut filter_block_logs(&block, &filter, height));
+                    }
+                }
+            }
+        };
+
+        Box::pin(async { Ok(logs) })
     }
 
     // ----------- Not impl.

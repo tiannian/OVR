@@ -4,6 +4,7 @@
 
 pub mod staking;
 
+use crate::common::handle_bloom;
 use crate::{
     common::{
         block_hash_to_evm_format, hash_sha3_256, tm_proposer_to_evm_format, BlockHeight,
@@ -13,13 +14,13 @@ use crate::{
     tx::Tx,
 };
 use ethereum::Log as EthLog;
+use ethereum_types::Bloom;
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use primitive_types::{H160, H256, U256};
 use ruc::*;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::{collections::HashMap, fs, io::ErrorKind, mem, sync::Arc};
+use std::{fs, io::ErrorKind, mem, sync::Arc};
 use vsdb::{
     merkle::{MerkleTree, MerkleTreeStore},
     BranchName, MapxOrd, OrphanVs, ParentBranchName, ValueEn, ValueEnDe, Vecx, Vs,
@@ -177,7 +178,7 @@ pub struct StateBranch {
 
 pub struct ApplyResp {
     pub receipt: Option<Receipt>,
-    pub logs: Option<HashMap<HashValue, Log>>,
+    pub logs: Option<Vec<Log>>,
 }
 
 impl StateBranch {
@@ -221,7 +222,7 @@ impl StateBranch {
 
     // Deal with each transaction.
     // Will be used by all the 3 branches of `Ledger`.
-    pub(crate) fn apply_tx(&mut self, tx: Tx) -> Result<ApplyResp> {
+    pub(crate) fn apply_tx(&mut self, tx: Tx) -> Result<Option<Receipt>> {
         let b = self.branch.clone();
         let b = b.as_slice().into();
 
@@ -236,14 +237,17 @@ impl StateBranch {
         let tx_hash = tx.hash();
 
         let mut r = None;
-        let mut m = None;
+
         match tx {
             Tx::Evm(tx) => tx
                 .apply(self, b, false)
-                .map(|(ret, receipt)| {
+                .map(|(ret, mut receipt)| {
                     self.charge_fee(ret.caller, ret.fee_used, b);
                     self.tx_hashes_in_process.push(tx_hash.clone());
-                    m = Some(ret.gen_logs(tx_hash));
+
+                    let mut logs = ret.gen_logs(tx_hash);
+                    receipt.add_logs(logs.as_mut_slice());
+
                     r = Some(receipt);
                 })
                 .map_err(|e| {
@@ -268,10 +272,7 @@ impl StateBranch {
                 })?,
         };
 
-        Ok(ApplyResp {
-            receipt: r,
-            logs: m,
-        })
+        Ok(r)
     }
 
     // NOTE:
@@ -301,21 +302,15 @@ impl StateBranch {
             .for_each(|(_, r)| {
                 block_gas_used.saturating_add(r.tx_gas_used);
             });
+        let mut b = Bloom::from_slice(self.block_in_process.bloom.as_slice());
         for hash in self.tx_hashes_in_process.iter() {
             if let Some(mut r) = self.block_in_process.header.receipts.get_mut(hash) {
                 r.block_gas_used = block_gas_used;
+                handle_bloom(&mut b, r.logs.as_slice());
             }
         }
 
-        // Calculate the subscript position of the log in this block
-        let mut log_index_in_block = 0;
-        for tx_hash in self.tx_hashes_in_process.iter() {
-            if let Some(mut log) = self.block_in_process.logs.get_mut(tx_hash) {
-                log.log_index_in_block = log_index_in_block;
-                log_index_in_block += 1;
-            }
-        }
-
+        self.block_in_process.bloom = b.as_bytes().to_vec();
         self.block_in_process.header_hash = self.block_in_process.header.hash();
 
         let block = mem::take(&mut self.block_in_process);
@@ -446,8 +441,8 @@ pub struct Block {
     pub header_hash: HashValue,
     // transaction vec
     pub txs: Vecx<Tx>,
-    // evm execute log
-    pub logs: MapxOrd<HashValue, Log>,
+    // bloom
+    pub bloom: Vec<u8>,
 }
 
 impl Block {
@@ -469,7 +464,8 @@ impl Block {
             },
             header_hash: Default::default(),
             txs: Vecx::default(),
-            logs: MapxOrd::default(),
+            // logs: MapxOrd::default(),
+            bloom: Bloom::default().as_bytes().to_vec(),
         }
     }
 }
@@ -492,10 +488,21 @@ pub struct Receipt {
     pub contract_addr: Option<H160>,
     // TODO: to be filled
     pub state_root: Option<HashValue>,
-    // TODO: to be filled
-    pub logs_bloom: Option<Value>,
     // execute success or failure
     pub status_code: bool,
+    // logs
+    pub logs: Vec<Log>,
+}
+
+impl Receipt {
+    pub fn add_logs(&mut self, logs: &mut [Log]) {
+        for (index, log) in logs.iter_mut().enumerate() {
+            log.tx_index = self.tx_index;
+            log.log_index_in_tx = index as u64;
+        }
+
+        self.logs = logs.to_vec();
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
