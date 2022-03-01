@@ -18,3 +18,5 @@ debug
 release
 tools/tendermint
 *tar.gz
+
+/contracts

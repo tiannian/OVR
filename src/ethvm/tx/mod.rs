@@ -4,6 +4,7 @@ use super::{impls::stack::OvrStackState, precompile::PRECOMPILE_SET, OvrAccount}
 use crate::{
     common::HashValue,
     ledger::{Log as LedgerLog, Receipt, StateBranch},
+    InitalContract,
 };
 use ethereum::{Log, TransactionAction, TransactionAny};
 use evm::{
@@ -497,7 +498,7 @@ impl Tx {
             }
         };
 
-        TxCommonProperties{
+        TxCommonProperties {
             nonce,
             gas_limit,
             gas_price,
@@ -506,7 +507,7 @@ impl Tx {
             input,
             r,
             s,
-            v
+            v,
         }
     }
 }
@@ -578,4 +579,56 @@ impl fmt::Display for ExecRet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", serde_json::to_string(self).unwrap())
     }
+}
+
+pub fn inital_create2(
+    contract: InitalContract,
+    state: &super::State,
+    b: BranchName<'_>,
+) -> Result<()> {
+    let evm_cfg = EvmCfg::istanbul();
+
+    let metadata = StackSubstateMetadata::new(u64::MAX, &evm_cfg);
+    let mut backend = state.get_backend_hdr(b);
+    let state = OvrStackState::new(metadata, &backend);
+
+    let precompiles = PRECOMPILE_SET.clone();
+    let mut executor =
+        StackExecutor::new_with_precompiles(state, &evm_cfg, &precompiles);
+
+    let bytecode_hex = &contract.bytecode[2..].trim();
+
+    // parse hex.
+    let bytecode = hex::decode(bytecode_hex).c(d!())?;
+    // get salt.
+    let salt = H256::from_slice(&Keccak256::digest(contract.salt));
+
+    let code_hash = H256::from_slice(&Keccak256::digest(&bytecode));
+
+    let contract_addr = executor.create_address(CreateScheme::Create2 {
+        caller: contract.from,
+        salt,
+        code_hash,
+    });
+
+    println!("OVR contract address is : {:?}", contract_addr);
+
+    let exit_reason = executor.transact_create2(
+        contract.from,
+        U256::from(0u64),
+        bytecode,
+        salt,
+        800000000,
+        vec![],
+    );
+
+    let success = matches!(exit_reason, ExitReason::Succeed(_));
+    if success {
+        let (changes, logs) = executor.into_state().deconstruct();
+        backend.apply(changes, logs, false);
+    } else {
+        return Err(eg!("inital create false."));
+    }
+
+    Ok(())
 }

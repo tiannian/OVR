@@ -13,7 +13,7 @@ use nix::{
     },
     unistd::{close, fork, ForkResult},
 };
-use ovr::{cfg::DevCfg, DECIMAL};
+use ovr::{cfg::DevCfg, InitalContract, InitalState, DECIMAL};
 use primitive_types::{H160, U256};
 use ruc::{cmd, *};
 use serde::{Deserialize, Serialize};
@@ -49,6 +49,10 @@ pub struct EnvCfg {
     // seconds between two blocks
     block_itv_secs: u8,
 
+    // inital contract path
+    inital_bytecode_path: Option<String>,
+    inital_salt: Option<String>,
+
     // how many validator nodes should be created
     validator_num: u8,
 }
@@ -75,6 +79,8 @@ impl From<DevCfg> for EnvCfg {
             name: cfg.env_name.unwrap_or_else(|| ENV_NAME_DEFAULT.to_owned()),
             ops,
             block_itv_secs: cfg.block_itv_secs,
+            inital_bytecode_path: cfg.inital_bytecode_path,
+            inital_salt: cfg.inital_salt,
             validator_num: cfg.validator_num,
         }
     }
@@ -123,6 +129,8 @@ pub struct Env {
 
     token_distribution: TokenDistribution,
 
+    inital_contracts: Vec<InitalContract>,
+
     seed_nodes: BTreeMap<NodeId, Node>,
     full_nodes: BTreeMap<NodeId, Node>,
     validator_nodes: BTreeMap<NodeId, Node>,
@@ -138,11 +146,35 @@ impl Env {
     // - initilize a new env
     // - `genesis.json` will be created
     fn create(cfg: &EnvCfg) -> Result<Env> {
+        let token_distribution = TokenDistribution::generate();
+
+        let inital_contracts = if let Some(path) = &cfg.inital_bytecode_path {
+            let (addr, _) = token_distribution.addr_to_amount.iter().next().c(d!())?;
+
+            let salt = cfg
+                .inital_salt
+                .clone()
+                .c(d!("init salt must be set when inital_bytecode_path set"))?;
+
+            let bytecode = fs::read_to_string(path).c(d!())?;
+
+            let inital_contract = InitalContract {
+                from: *addr,
+                salt,
+                bytecode,
+            };
+
+            vec![inital_contract]
+        } else {
+            vec![]
+        };
+
         let mut env = Env {
             name: cfg.name.clone(),
             home: format!("{}/{}", ENV_BASE_DIR, &cfg.name),
-            token_distribution: TokenDistribution::generate(),
+            token_distribution,
             block_itv_secs: cfg.block_itv_secs,
+            inital_contracts,
             ..Self::default()
         };
 
@@ -381,9 +413,13 @@ impl Env {
                             v["name"] = Value::String(format!("node-{}", i));
                         },
                     );
-                    let app_state =
-                        serde_json::to_value(&self.token_distribution.addr_to_amount)
-                            .c(d!())?;
+
+                    let inital_state = InitalState {
+                        addr_to_amount: self.token_distribution.addr_to_amount.clone(),
+                        inital_contracts: self.inital_contracts.clone(),
+                    };
+
+                    let app_state = serde_json::to_value(inital_state).c(d!())?;
                     fs::read_to_string(format!("{}/{}", tmp_home, genesis_file))
                         .c(d!())
                         .and_then(|g| serde_json::from_str::<Value>(&g).c(d!()))

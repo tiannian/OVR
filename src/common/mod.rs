@@ -1,10 +1,13 @@
+use std::collections::BTreeMap;
+
 use crate::{
     ledger::{Log, VsVersion, MAIN_BRANCH_NAME},
     {ethvm::State as EvmState, ledger::State as LedgerState},
 };
 use ethereum_types::{Bloom, BloomInput};
-use primitive_types::{H160, H256};
+use primitive_types::{H160, H256, U256};
 use ruc::*;
+use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 use vsdb::{BranchName, ParentBranchName, ValueEn, VsMgmt};
 use web3_rpc_core::types::BlockNumber;
@@ -44,6 +47,29 @@ pub fn block_hash_to_evm_format(hash: &HashValue) -> H256 {
     buf.copy_from_slice(&hash[..min!(LEN, hash.len())]);
 
     H256::from_slice(&buf)
+}
+
+#[derive(Default, Debug, Clone, Deserialize, Serialize)]
+pub struct InitalContract {
+    pub from: H160,
+    pub salt: String,
+    pub bytecode: String,
+}
+
+impl InitalContract {
+    pub fn new(from: H160, salt: String) -> Self {
+        Self {
+            from,
+            salt,
+            bytecode: String::new(),
+        }
+    }
+}
+
+#[derive(Default, Debug, Clone, Deserialize, Serialize)]
+pub struct InitalState {
+    pub addr_to_amount: BTreeMap<H160, U256>,
+    pub inital_contracts: Vec<InitalContract>,
 }
 
 pub fn rollback_to_height(
@@ -91,7 +117,6 @@ pub fn block_number_to_height(
     ledger_state: Option<&LedgerState>,
     evm_state: Option<&EvmState>,
 ) -> BlockHeight {
-
     let bn = if let Some(bn) = bn {
         bn
     } else {

@@ -71,7 +71,9 @@ pub fn tx_to_web3_tx(
         Tx::Evm(evm_tx) => {
             let tx_properties = evm_tx.get_tx_common_properties();
             let (from, to) = evm_tx.get_from_to();
-            let public_key = evm_tx.recover_pubkey().map(|pubkey| H512::from_slice(pubkey.as_slice()));
+            let public_key = evm_tx
+                .recover_pubkey()
+                .map(|pubkey| H512::from_slice(pubkey.as_slice()));
             let raw = match serde_json::to_vec(&tx) {
                 Ok(v) => Bytes::new(v),
                 Err(e) => {
