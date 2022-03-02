@@ -363,18 +363,19 @@ impl EthApi for EthApiImpl {
             let web3_txs = match txs_to_web3_txs(&block, chain_id, height) {
                 Ok(v) => v,
                 Err(e) => {
-
                     // You must delete the branch before returning,
                     // otherwise the next time you come in,
                     // the same branch will exist and an error will be reported.
-                    if let Err(e) =
-                    remove_branch_by_name(new_branch_name, None, Some(&self.state.evm))
-                    {
+                    if let Err(e) = remove_branch_by_name(
+                        new_branch_name,
+                        None,
+                        Some(&self.state.evm),
+                    ) {
                         return Box::pin(async { Err(e) });
                     }
 
-                    return Box::pin(async { Err(e) })
-                },
+                    return Box::pin(async { Err(e) });
+                }
             };
 
             let b = if is_complete {
@@ -442,9 +443,7 @@ impl EthApi for EthApiImpl {
             return Box::pin(async { Err(e) });
         }
 
-        Box::pin(async {
-            Ok(op)
-        })
+        Box::pin(async { Ok(op) })
     }
 
     fn transaction_count(
