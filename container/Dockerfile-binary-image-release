@@ -1,0 +1,23 @@
+FROM binary-rust-base
+ENV WORK_DIR /ovrd
+ENV VERGEN_SHA_EXTERN release_build
+ENV PATH=$PATH:/root/.cargo/bin/
+
+COPY . $WORK_DIR
+WORKDIR $WORK_DIR
+
+RUN rustup toolchain install stable && \
+    rustup component add clippy --toolchain stable && \
+    rustup component add rustfmt
+
+
+# RUN make fmt
+RUN make lint
+# RUN make test
+
+RUN mkdir -p /root/.cargo/bin/
+RUN make build_release_rocksdb
+RUN mkdir /binary
+RUN mv /root/.cargo/bin/ovrd /binary/ovrd
+
+CMD ["sleep", "999999"]

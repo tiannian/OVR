@@ -1,0 +1,8 @@
+FROM debian:11.0-slim
+ENV WORK_DIR /ovrd
+
+RUN apt update && apt install -y libleveldb-dev=1.22-3 && rm -rf /var/lib/apt/lists/*
+COPY binary/ovrd /usr/local/sbin/ovrd
+COPY container/docker-entrypoint-ovrd.sh /docker-entrypoint.sh
+WORKDIR /
+ENTRYPOINT ["/docker-entrypoint.sh"]
