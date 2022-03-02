@@ -294,13 +294,13 @@ impl StateBranch {
         self.block_in_process.header.tx_merkle.root_hash = root;
 
         // Calculate the total amount of block gas to be used
-        let block_gas_used: U256 = U256::zero();
+        let mut block_gas_used: U256 = U256::zero();
         self.block_in_process
             .header
             .receipts
             .iter()
             .for_each(|(_, r)| {
-                block_gas_used.saturating_add(r.tx_gas_used);
+                block_gas_used += r.tx_gas_used;
             });
         let mut b = Bloom::from_slice(self.block_in_process.bloom.as_slice());
         for hash in self.tx_hashes_in_process.iter() {

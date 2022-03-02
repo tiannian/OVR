@@ -1,12 +1,14 @@
 use crate::{
     common::{
-        block_number_to_height, rollback_to_height, tm_proposer_to_evm_format, HashValue,
+        block_hash_to_evm_format, block_number_to_height, rollback_to_height,
+        tm_proposer_to_evm_format, HashValue,
     },
     ledger::{State, MAIN_BRANCH_NAME},
     rpc::{
         error::new_jsonrpc_error,
         utils::{
             filter_block_logs, remove_branch_by_name, rollback_by_height, tx_to_web3_tx,
+            txs_to_web3_txs,
         },
     },
     tx::Tx,
@@ -175,7 +177,7 @@ impl EthApi for EthApiImpl {
     fn is_mining(&self) -> BoxFuture<Result<bool>> {
         // is validator?
 
-        Box::pin(async move { Ok(true) })
+        Box::pin(async move { Ok(false) })
     }
 
     fn gas_price(&self) -> BoxFuture<Result<U256>> {
@@ -210,18 +212,13 @@ impl EthApi for EthApiImpl {
                 }
             };
 
+        // TODO: I'm not sure if this is the right thing to do
         let key = (&addr, &H256::from_slice(index.as_byte_slice()));
 
         let val = if let Some(val) = self.state.evm.OFUEL.storages.get(&key) {
             val
         } else {
-            let error_value = serde_json::to_string(&key).unwrap(); //safe
-            return Box::pin(async {
-                Err(new_jsonrpc_error(
-                    "The key does not have a corresponding value",
-                    Value::String(error_value),
-                ))
-            });
+            H256::default()
         };
 
         if let Err(e) =
@@ -240,6 +237,13 @@ impl EthApi for EthApiImpl {
     ) -> BoxFuture<Result<Option<RichBlock>>> {
         let mut op_rb = None;
         for (height, block) in self.state.blocks.iter() {
+            let chain_id = self.state.chain_id.get_value();
+            let web3_txs = match txs_to_web3_txs(&block, chain_id, height) {
+                Ok(v) => v,
+                Err(e) => return Box::pin(async { Err(e) }),
+            };
+
+            let tx_hashes = web3_txs.iter().map(|t| t.hash).collect::<Vec<H256>>();
             let mut b = Block {
                 hash: None,
                 parent_hash: Default::default(),
@@ -259,25 +263,13 @@ impl EthApi for EthApiImpl {
                 total_difficulty: Default::default(),
                 seal_fields: vec![],
                 uncles: vec![],
-                transactions: BlockTransactions::Hashes(vec![]),
+                transactions: BlockTransactions::Hashes(tx_hashes),
                 size: None,
             };
 
             if block.header_hash.as_slice() == block_hash.as_bytes() {
                 // Determine if you want to return all block information
                 if is_complete {
-                    let new_branch_name = match rollback_by_height(
-                        Some(BlockNumber::Num(height)),
-                        None,
-                        Some(&self.state.evm),
-                        "block_by_hash",
-                    ) {
-                        Ok(name) => name,
-                        Err(e) => {
-                            return Box::pin(async { Err(e) });
-                        }
-                    };
-
                     let proposer = tm_proposer_to_evm_format(&block.header.proposer);
 
                     let receipt = if let Some((_, receipt)) =
@@ -290,39 +282,37 @@ impl EthApi for EthApiImpl {
                         });
                     };
 
-                    // TODO: To be filled
-                    b = Block {
-                        hash: Some(H256::from_slice(block.header_hash.as_slice())),
-                        parent_hash: H256::from_slice(block.header.prev_hash.as_slice()),
-                        uncles_hash: Default::default(), //Not required
-                        author: proposer,
-                        miner: proposer,
-                        state_root: Default::default(), //Not required
-                        transactions_root: H256::from_slice(
-                            block.header.tx_merkle.root_hash.as_slice(),
-                        ),
-                        receipts_root: Default::default(), //Not required
-                        number: Some(U256::from(height)),
-                        gas_used: receipt.block_gas_used, //missing data
-                        gas_limit: self.state.evm.block_gas_limit.get_value(),
-                        extra_data: Default::default(), //Not required
-                        logs_bloom: Some(Bloom::from_slice(block.bloom.as_slice())), //Not required
-                        timestamp: U256::from(block.header.timestamp),
-                        difficulty: Default::default(), //Not required
-                        total_difficulty: Default::default(), //Not required
-                        seal_fields: vec![],            //Not required
-                        uncles: vec![],                 //Not required
-                        transactions: BlockTransactions::Full(vec![]), //missing data
-                        size: None,                     //missing data
+                    // prev is null if block is 1
+                    let parent_hash = if block.header.prev_hash.is_empty() {
+                        H256::default()
+                    } else {
+                        block_hash_to_evm_format(&block.header.prev_hash)
                     };
 
-                    if let Err(e) = remove_branch_by_name(
-                        new_branch_name,
-                        None,
-                        Some(&self.state.evm),
-                    ) {
-                        return Box::pin(async { Err(e) });
-                    }
+                    b = Block {
+                        hash: Some(block_hash_to_evm_format(&block.header_hash)),
+                        parent_hash,
+                        uncles_hash: Default::default(),
+                        author: proposer,
+                        miner: proposer,
+                        state_root: Default::default(),
+                        transactions_root: block_hash_to_evm_format(
+                            &block.header.tx_merkle.root_hash,
+                        ),
+                        receipts_root: Default::default(),
+                        number: Some(U256::from(height)),
+                        gas_used: receipt.block_gas_used,
+                        gas_limit: self.state.evm.block_gas_limit.get_value(),
+                        extra_data: Default::default(),
+                        logs_bloom: Some(Bloom::from_slice(block.bloom.as_slice())),
+                        timestamp: U256::from(block.header.timestamp),
+                        difficulty: Default::default(),
+                        total_difficulty: Default::default(),
+                        seal_fields: vec![],
+                        uncles: vec![],
+                        transactions: BlockTransactions::Full(web3_txs),
+                        size: None, //missing data
+                    };
                 }
 
                 op_rb.replace(RichBlock {
@@ -342,50 +332,78 @@ impl EthApi for EthApiImpl {
     ) -> BoxFuture<Result<Option<RichBlock>>> {
         let height = block_number_to_height(Some(bn), None, Some(&self.state.evm));
 
-        let r =
-            rollback_to_height(height, None, Some(&self.state.evm), "block_by_number");
+        let new_branch_name = match rollback_to_height(
+            height,
+            None,
+            Some(&self.state.evm),
+            "block_by_number",
+        ) {
+            Ok(name) => name,
+            Err(e) => {
+                return Box::pin(async move {
+                    Err(new_jsonrpc_error(
+                        "rollback to height",
+                        Value::String(e.to_string()),
+                    ))
+                });
+            }
+        };
 
-        if let Err(e) = r.as_ref().map_err(|e| {
-            new_jsonrpc_error(
-                "evm state rollback to height error",
-                Value::String(e.to_string()),
-            )
-        }) {
-            return Box::pin(async { Err(e) });
-        }
-
-        let new_branch_name = r.unwrap(); //safe
-
-        let b = if let Some(block) = self.state.blocks.get(&height) {
+        let op = if let Some(block) = self.state.blocks.get(&height) {
             let proposer = tm_proposer_to_evm_format(&block.header.proposer);
 
+            // prev is null if block is 1
+            let parent_hash = if block.header.prev_hash.is_empty() {
+                H256::default()
+            } else {
+                block_hash_to_evm_format(&block.header.prev_hash)
+            };
+
+            let chain_id = self.state.chain_id.get_value();
+            let web3_txs = match txs_to_web3_txs(&block, chain_id, height) {
+                Ok(v) => v,
+                Err(e) => {
+
+                    // You must delete the branch before returning,
+                    // otherwise the next time you come in,
+                    // the same branch will exist and an error will be reported.
+                    if let Err(e) =
+                    remove_branch_by_name(new_branch_name, None, Some(&self.state.evm))
+                    {
+                        return Box::pin(async { Err(e) });
+                    }
+
+                    return Box::pin(async { Err(e) })
+                },
+            };
+
             let b = if is_complete {
-                // TODO: To be filled
                 Block {
-                    hash: Some(H256::from_slice(block.header_hash.as_slice())),
-                    parent_hash: H256::from_slice(block.header.prev_hash.as_slice()),
-                    uncles_hash: Default::default(), //Not required
+                    hash: Some(block_hash_to_evm_format(&block.header_hash)),
+                    parent_hash,
+                    uncles_hash: Default::default(),
                     author: proposer,
                     miner: proposer,
-                    state_root: Default::default(), //missing data?
-                    transactions_root: H256::from_slice(
-                        block.header.tx_merkle.root_hash.as_slice(),
+                    state_root: Default::default(),
+                    transactions_root: block_hash_to_evm_format(
+                        &block.header.tx_merkle.root_hash,
                     ),
-                    receipts_root: Default::default(), //missing data
+                    receipts_root: Default::default(),
                     number: Some(U256::from(height)),
-                    gas_used: Default::default(), //missing data
+                    gas_used: Default::default(),
                     gas_limit: self.state.evm.block_gas_limit.get_value(),
-                    extra_data: Default::default(), //Not required
-                    logs_bloom: None,               //Not required
+                    extra_data: Default::default(),
+                    logs_bloom: None,
                     timestamp: U256::from(block.header.timestamp),
-                    difficulty: Default::default(), //Not required
-                    total_difficulty: Default::default(), //Not required
-                    seal_fields: vec![],            //Not required
-                    uncles: vec![],                 //Not required
-                    transactions: BlockTransactions::Full(vec![]), //missing data
-                    size: None,                     //missing data
+                    difficulty: Default::default(),
+                    total_difficulty: Default::default(),
+                    seal_fields: vec![],
+                    uncles: vec![],
+                    transactions: BlockTransactions::Full(web3_txs),
+                    size: None,
                 }
             } else {
+                let tx_hashes = web3_txs.iter().map(|t| t.hash).collect::<Vec<H256>>();
                 Block {
                     hash: None,
                     parent_hash: Default::default(),
@@ -405,19 +423,17 @@ impl EthApi for EthApiImpl {
                     total_difficulty: Default::default(),
                     seal_fields: vec![],
                     uncles: vec![],
-                    transactions: BlockTransactions::Hashes(vec![]),
+                    transactions: BlockTransactions::Hashes(tx_hashes),
                     size: None,
                 }
             };
 
-            b
+            Some(RichBlock {
+                inner: b,
+                extra_info: Default::default(),
+            })
         } else {
-            return Box::pin(async move {
-                Err(new_jsonrpc_error(
-                    "The block height does not have a corresponding value",
-                    Value::String(height.to_string()),
-                ))
-            });
+            None
         };
 
         if let Err(e) =
@@ -427,10 +443,7 @@ impl EthApi for EthApiImpl {
         }
 
         Box::pin(async {
-            Ok(Some(RichBlock {
-                inner: b,
-                extra_info: Default::default(),
-            }))
+            Ok(op)
         })
     }
 
@@ -484,13 +497,6 @@ impl EthApi for EthApiImpl {
                     }
                 };
             }
-        } else {
-            return Box::pin(async move {
-                Err(new_jsonrpc_error(
-                    "there is no corresponding block under this height",
-                    Value::String(height.to_string()),
-                ))
-            });
         }
 
         if let Err(e) = remove_branch_by_name(new_branch_name, Some(&self.state), None) {
@@ -541,12 +547,7 @@ impl EthApi for EthApiImpl {
         let tx_count = if let Some(block) = self.state.blocks.get(&height) {
             block.txs.len()
         } else {
-            return Box::pin(async move {
-                Err(new_jsonrpc_error(
-                    "there is no corresponding block under this height",
-                    Value::String(height.to_string()),
-                ))
-            });
+            Default::default()
         };
 
         if let Err(e) =
@@ -570,12 +571,7 @@ impl EthApi for EthApiImpl {
         let bytes = if let Some(account) = self.state.evm.OFUEL.accounts.get(&addr) {
             account.code
         } else {
-            return Box::pin(async move {
-                Err(new_jsonrpc_error(
-                    "No corresponding account was found at this address",
-                    Value::String(addr.to_string()),
-                ))
-            });
+            Default::default()
         };
 
         if let Err(e) =
@@ -764,13 +760,6 @@ impl EthApi for EthApiImpl {
                     }
                 }
             }
-        } else {
-            return Box::pin(async move {
-                Err(new_jsonrpc_error(
-                    "there is no corresponding block under this height",
-                    Value::String(height.to_string()),
-                ))
-            });
         }
 
         if let Err(e) =
@@ -787,7 +776,7 @@ impl EthApi for EthApiImpl {
 
         for (height, block) in self.state.blocks.iter() {
             let hash = HashValue::from(tx_hash.as_bytes());
-            let block_hash = H256::from_slice(block.header_hash.as_slice());
+            let block_hash = block_hash_to_evm_format(&block.header_hash);
 
             if let Some(r) = block.header.receipts.get(&hash) {
                 let mut logs = vec![];

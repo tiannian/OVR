@@ -60,6 +60,27 @@ pub fn remove_branch_by_name(
     Ok(())
 }
 
+pub fn txs_to_web3_txs(
+    block: &Block,
+    chain_id: u64,
+    height: BlockHeight,
+) -> jsonrpc_core::Result<Vec<Transaction>> {
+    let mut web3_txs = vec![];
+    for (tx_index, tx) in block.txs.iter().enumerate() {
+        match tx_to_web3_tx(&tx, block, height, tx_index, chain_id) {
+            Ok(op) => {
+                if let Some(t) = op {
+                    web3_txs.push(t);
+                }
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        }
+    }
+    Ok(web3_txs)
+}
+
 pub fn tx_to_web3_tx(
     tx: &Tx,
     block: &Block,
