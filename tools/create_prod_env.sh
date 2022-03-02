@@ -51,6 +51,7 @@ sleep 3
 ../release/ovr dev -S -n $env_name >/dev/null || exit 1
 
 for cfg in $(find ${env_path} -name "config.toml"); do
+
     perl -pi -e 's/^\s*(addr_book_strict)\s*=\s*.*/$1 = true/' $cfg
     perl -pi -e 's/^\s*(persistent_peers_max_dial_period)\s*=\s*.*/$1 = "3s"/' $cfg
     perl -pi -e 's/^\s*(timeout_propose)\s*=\s*.*/$1 = "3s"/' $cfg
@@ -62,6 +63,7 @@ for cfg in $(find ${env_path} -name "config.toml"); do
     perl -pi -e 's/^\s*(timeout_commit)\s*=\s*.*/$1 = "1s"/' $cfg
     perl -pi -e 's/^\s*(create_empty_blocks)\s*=\s*.*/$1 = true/' $cfg
     perl -pi -e 's/^\s*(create_empty_blocks_interval)\s*=\s*.*/$1 = "0s"/' $cfg
+
 done
 
 
