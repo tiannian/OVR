@@ -63,7 +63,7 @@ build_release_musl: tendermint
 	$(call pack,release,x86_64-unknown-linux-musl)
 
 tendermint:
-	- rm $(shell which tendermint)
+	-@ rm $(shell which tendermint)
 	bash tools/download_tendermint.sh 'tools/tendermint'
 	cd tools/tendermint && $(MAKE) install
 

@@ -4,6 +4,7 @@ use super::{impls::stack::OvrStackState, precompile::PRECOMPILE_SET, OvrAccount}
 use crate::{
     common::HashValue,
     ledger::{Log as LedgerLog, Receipt, StateBranch},
+    InitalContract,
 };
 use ethereum::{Log, TransactionAction, TransactionAny};
 use evm::{
@@ -19,7 +20,6 @@ use primitive_types::{H160, H256, U256};
 use ruc::*;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
-use std::collections::HashMap;
 use std::{collections::BTreeMap, fmt, result::Result as StdResult};
 use vsdb::BranchName;
 
@@ -31,6 +31,19 @@ type NeededAmount = U256;
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Tx {
     tx: TransactionAny,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct TxCommonProperties {
+    pub nonce: U256,
+    pub gas_limit: U256,
+    pub gas_price: U256,
+    pub action: TransactionAction,
+    pub value: U256,
+    pub input: Vec<u8>,
+    pub r: H256,
+    pub s: H256,
+    pub v: u8,
 }
 
 impl Tx {
@@ -379,6 +392,13 @@ impl Tx {
 
     // if success, the transaction signature is valid.
     fn recover_signer(&self) -> Option<H160> {
+        let pubkey = self.recover_pubkey()?;
+        Some(H160::from(H256::from_slice(
+            Keccak256::digest(&pubkey).as_slice(),
+        )))
+    }
+
+    pub fn recover_pubkey(&self) -> Option<[u8; 64]> {
         let transaction = &self.tx;
         let mut sig = [0u8; 65];
         let mut msg = [0u8; 32];
@@ -408,13 +428,10 @@ impl Tx {
                 );
             }
         }
-        let pubkey = sp_io::crypto::secp256k1_ecdsa_recover(&sig, &msg).ok()?;
-        Some(H160::from(H256::from_slice(
-            Keccak256::digest(&pubkey).as_slice(),
-        )))
+        sp_io::crypto::secp256k1_ecdsa_recover(&sig, &msg).ok()
     }
 
-    fn get_from_to(&self) -> (Option<H160>, Option<H160>) {
+    pub fn get_from_to(&self) -> (Option<H160>, Option<H160>) {
         let from = self.recover_signer();
         let to = match &self.tx {
             TransactionAny::Legacy(l) => match l.action {
@@ -431,6 +448,67 @@ impl Tx {
             },
         };
         (from, to)
+    }
+
+    pub fn get_tx_common_properties(&self) -> TxCommonProperties {
+        let (nonce, gas_limit, gas_price, input, value, action, r, s, v) = match &self.tx
+        {
+            TransactionAny::Legacy(tx) => (
+                tx.nonce,
+                tx.gas_limit,
+                tx.gas_price,
+                tx.input.clone(),
+                tx.value,
+                tx.action,
+                *tx.signature.r(),
+                *tx.signature.s(),
+                tx.signature.standard_v(),
+            ),
+            TransactionAny::EIP2930(tx) => (
+                tx.nonce,
+                tx.gas_limit,
+                tx.gas_price,
+                tx.input.clone(),
+                tx.value,
+                tx.action,
+                tx.r,
+                tx.s,
+                tx.odd_y_parity as u8,
+            ),
+            TransactionAny::EIP1559(tx) => {
+                // Here I have taken a middle value
+                // I don't think it should overflow here
+                let price = tx
+                    .max_priority_fee_per_gas
+                    .saturating_add(tx.max_fee_per_gas)
+                    .checked_div(U256::from(2))
+                    .unwrap_or_default();
+
+                (
+                    tx.nonce,
+                    tx.gas_limit,
+                    price,
+                    tx.input.clone(),
+                    tx.value,
+                    tx.action,
+                    tx.r,
+                    tx.s,
+                    tx.odd_y_parity as u8,
+                )
+            }
+        };
+
+        TxCommonProperties {
+            nonce,
+            gas_limit,
+            gas_price,
+            action,
+            value,
+            input,
+            r,
+            s,
+            v,
+        }
     }
 }
 
@@ -483,20 +561,17 @@ impl ExecRet {
             tx_gas_used: self.fee_used,
             contract_addr,
             state_root: None,
-            logs_bloom: None,
             status_code: self.success,
+            logs: vec![],
         }
     }
 
-    pub fn gen_logs(&self, tx_hash: HashValue) -> HashMap<HashValue, LedgerLog> {
-        let mut m = HashMap::new();
+    pub fn gen_logs(&self, tx_hash: HashValue) -> Vec<LedgerLog> {
+        let mut v = Vec::new();
         for l in self.logs.iter() {
-            m.insert(
-                tx_hash.clone(),
-                LedgerLog::new_from_eth_log_and_tx_hash(l, &tx_hash),
-            );
+            v.push(LedgerLog::new_from_eth_log_and_tx_hash(l, &tx_hash));
         }
-        m
+        v
     }
 }
 
@@ -504,4 +579,56 @@ impl fmt::Display for ExecRet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", serde_json::to_string(self).unwrap())
     }
+}
+
+pub fn inital_create2(
+    contract: InitalContract,
+    state: &super::State,
+    b: BranchName<'_>,
+) -> Result<()> {
+    let evm_cfg = EvmCfg::istanbul();
+
+    let metadata = StackSubstateMetadata::new(u64::MAX, &evm_cfg);
+    let mut backend = state.get_backend_hdr(b);
+    let state = OvrStackState::new(metadata, &backend);
+
+    let precompiles = PRECOMPILE_SET.clone();
+    let mut executor =
+        StackExecutor::new_with_precompiles(state, &evm_cfg, &precompiles);
+
+    let bytecode_hex = &contract.bytecode[2..].trim();
+
+    // parse hex.
+    let bytecode = hex::decode(bytecode_hex).c(d!())?;
+    // get salt.
+    let salt = H256::from_slice(&Keccak256::digest(contract.salt));
+
+    let code_hash = H256::from_slice(&Keccak256::digest(&bytecode));
+
+    let contract_addr = executor.create_address(CreateScheme::Create2 {
+        caller: contract.from,
+        salt,
+        code_hash,
+    });
+
+    println!("OVR contract address is : {:?}", contract_addr);
+
+    let exit_reason = executor.transact_create2(
+        contract.from,
+        U256::from(0u64),
+        bytecode,
+        salt,
+        800000000,
+        vec![],
+    );
+
+    let success = matches!(exit_reason, ExitReason::Succeed(_));
+    if success {
+        let (changes, logs) = executor.into_state().deconstruct();
+        backend.apply(changes, logs, false);
+    } else {
+        return Err(eg!("inital create false."));
+    }
+
+    Ok(())
 }

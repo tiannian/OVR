@@ -199,6 +199,11 @@ pub struct DevCfg {
     pub env_info: bool,
     #[clap(short = 'I', long, default_value_t = 1)]
     pub block_itv_secs: u8,
+    #[clap(long)]
+    pub inital_bytecode_path: Option<String>,
+    #[clap(long)]
+    pub inital_salt: Option<String>,
+    // pub
     #[clap(
         short = 'N',
         long,

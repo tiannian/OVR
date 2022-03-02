@@ -8,9 +8,10 @@ use crate::ledger::State;
 use crate::{
     cfg::DaemonCfg as Cfg,
     common::{BlockHeight, HashValue},
-    ethvm::OvrAccount,
+    ethvm::{tx::inital_create2, OvrAccount},
     ledger::{Ledger, Receipt},
     tx::Tx,
+    InitalState,
 };
 use abci::Application;
 use primitive_types::{H160, U256};
@@ -91,9 +92,12 @@ impl Application for App {
 
     fn init_chain(&self, req: RequestInitChain) -> ResponseInitChain {
         if !req.app_state_bytes.is_empty() {
-            let token_dists: BTreeMap<H160, U256> =
-                pnk!(serde_json::from_slice(&req.app_state_bytes));
-            for (addr, am) in token_dists.into_iter() {
+            let inital_state =
+                pnk!(serde_json::from_slice::<InitalState>(&req.app_state_bytes));
+
+            let token_distribution = inital_state.addr_to_amount;
+
+            for (addr, am) in token_distribution.into_iter() {
                 pnk!(
                     self.ledger
                         .state
@@ -102,6 +106,13 @@ impl Application for App {
                         .accounts
                         .insert(addr, OvrAccount::from_balance(am))
                 );
+            }
+
+            let b = self.ledger.main.read().branch.clone();
+            let b = b.as_slice().into();
+
+            for contract in inital_state.inital_contracts {
+                pnk!(inital_create2(contract, &self.ledger.state.evm, b));
             }
         }
         ResponseInitChain::default()
@@ -149,29 +160,19 @@ impl Application for App {
             if tx.valid_in_abci() {
                 let mut sb = self.ledger.deliver_tx.write();
                 match sb.apply_tx(tx.clone()) {
-                    Ok(resp) => {
+                    Ok(receipt) => {
                         let tx_hash = tx.hash();
 
                         sb.block_in_process.txs.push(tx);
                         let tx_index = (sb.block_in_process.txs.len() - 1) as u64;
 
-                        if let Some(mut receipt) = resp.receipt {
+                        if let Some(mut receipt) = receipt {
                             receipt.tx_hash = tx_hash.clone();
                             receipt.tx_index = tx_index;
-                            sb.block_in_process.header.receipts.insert(tx_hash, receipt);
-                        }
-
-                        if let Some(mut log_map) = resp.logs {
-                            for (index, (_, log)) in log_map.iter_mut().enumerate() {
-                                log.tx_index = tx_index;
-                                log.log_index_in_tx = index as u64;
-                            }
-
-                            let mut logs = MapxOrd::new();
-                            log_map.into_iter().for_each(|(tx_hash, log)| {
-                                logs.insert(tx_hash, log);
-                            });
-                            sb.block_in_process.logs = logs;
+                            sb.block_in_process
+                                .header
+                                .receipts
+                                .insert(tx_hash.clone(), receipt);
                         }
                     }
                     Err(e) => {

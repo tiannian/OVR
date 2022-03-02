@@ -80,13 +80,7 @@ impl State {
         };
         let gas_limit = gas.checked_div(gas_price).unwrap().as_u64();
 
-        let height = if let Some(bn) = bn {
-            block_number_to_height(bn, None, Some(self))
-        } else if let Some((height, _)) = self.block_hashes.last() {
-            height
-        } else {
-            0
-        };
+        let height = block_number_to_height(bn, None, Some(self));
 
         let new_branch_name =
             rollback_to_height(height, None, Some(self), "call_contract")?;
