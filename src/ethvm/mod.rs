@@ -48,36 +48,13 @@ impl State {
         req: CallRequest,
         bn: Option<BlockNumber>,
     ) -> Result<CallContractResp> {
-        let caller = if let Some(from) = req.from {
-            from
-        } else {
-            return Err(eg!("caller cannot be empty"));
-        };
-        let address = if let Some(addr) = req.to {
-            addr
-        } else {
-            return Err(eg!("to cannot be empty"));
-        };
-        let value = if let Some(val) = req.value {
-            val
-        } else {
-            return Err(eg!("value cannot be empty"));
-        };
-        let data = if let Some(data) = req.data {
-            data
-        } else {
-            return Err(eg!("data cannot be empty"));
-        };
-        let gas_price = if let Some(gas_price) = req.gas_price {
-            gas_price
-        } else {
-            return Err(eg!("gas_price cannot be empty"));
-        };
-        let gas = if let Some(gas) = req.gas {
-            gas
-        } else {
-            return Err(eg!("gas cannot be empty"));
-        };
+        let caller = req.from.unwrap_or_default();
+        let address = req.to.unwrap_or_default();
+        let value = req.value.unwrap_or_default();
+        let data = req.data.unwrap_or_default();
+        // This parameter is used as the divisor and cannot be 0
+        let gas_price = req.gas_price.unwrap_or_else(U256::one);
+        let gas = req.gas.unwrap_or_default();
         let gas_limit = gas.checked_div(gas_price).unwrap().as_u64();
 
         let height = block_number_to_height(bn, None, Some(self));
