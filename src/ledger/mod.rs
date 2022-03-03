@@ -183,7 +183,7 @@ pub struct ApplyResp {
 
 impl StateBranch {
     #[inline(always)]
-    fn new(state: &State, branch: BranchName) -> Result<Self> {
+    pub fn new(state: &State, branch: BranchName) -> Result<Self> {
         let mut s = state.clone();
         s.branch_set_default(branch).c(d!())?;
 

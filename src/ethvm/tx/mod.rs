@@ -30,7 +30,7 @@ type NeededAmount = U256;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Tx {
-    tx: TransactionAny,
+    pub tx: TransactionAny,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

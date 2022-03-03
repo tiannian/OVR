@@ -1,4 +1,4 @@
-mod impls;
+pub mod impls;
 mod precompile;
 pub mod tx;
 

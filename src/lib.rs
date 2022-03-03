@@ -1,10 +1,10 @@
 pub mod cfg;
 mod common;
 mod consensus;
-mod ethvm;
+pub mod ethvm;
 pub mod ledger;
 pub mod rpc;
-mod tx;
+pub mod tx;
 
 pub use cfg::{Cfg, Commands, DaemonCfg};
 pub use common::{InitalContract, InitalState};

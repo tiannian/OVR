@@ -15,7 +15,7 @@ use vsdb::{BranchName, MapxDkVs, MapxOrd, MapxVs};
 
 // Ovr backend, storing all state values in vsdb.
 #[derive(Clone, Debug)]
-pub(crate) struct OvrBackend<'a> {
+pub struct OvrBackend<'a> {
     pub(crate) branch: BranchName<'a>,
     pub(crate) state: MapxVs<H160, OvrAccount>,
     pub(crate) storages: MapxDkVs<H160, H256, H256>,
