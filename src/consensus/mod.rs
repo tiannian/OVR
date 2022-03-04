@@ -17,6 +17,7 @@ use abci::Application;
 use primitive_types::{H160, U256};
 use ruc::*;
 use std::collections::BTreeMap;
+use std::fmt::format;
 use tmtypes::abci::{
     RequestBeginBlock, RequestCheckTx, RequestDeliverTx, RequestEndBlock, RequestInfo,
     RequestInitChain, ResponseBeginBlock, ResponseCheckTx, ResponseCommit,
@@ -121,20 +122,25 @@ impl Application for App {
     fn check_tx(&self, req: RequestCheckTx) -> ResponseCheckTx {
         let mut resp = ResponseCheckTx::default();
         alt!(0 != req.r#type, return resp);
-        if let Ok(tx) = Tx::deserialize(&req.tx) {
-            if tx.valid_in_abci() {
-                let mut sb = self.ledger.check_tx.write();
-                if let Err(e) = info!(sb.apply_tx(tx)) {
-                    resp.log = e.to_string();
+
+        match Tx::deserialize(&req.tx) {
+            Ok(tx) => {
+                if tx.valid_in_abci() {
+                    let mut sb = self.ledger.check_tx.write();
+                    if let Err(e) = info!(sb.apply_tx(tx)) {
+                        resp.log = e.to_string();
+                        resp.code = 1;
+                    }
+                } else {
+                    resp.log = "Should not appear in ABCI".to_owned();
                     resp.code = 1;
                 }
-            } else {
-                resp.log = "Should not appear in ABCI".to_owned();
+            }
+            Err(e) => {
+                println!("deserialize err:{:?}", e);
+                resp.log = e.to_string();
                 resp.code = 1;
             }
-        } else {
-            resp.log = "Invalid format".to_owned();
-            resp.code = 1;
         }
 
         resp

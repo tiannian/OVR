@@ -12,10 +12,13 @@ use crate::{
         },
     },
     tx::Tx,
+    EvmTx,
 };
 use byte_slice_cast::AsByteSlice;
+use ethereum::TransactionAny;
 use ethereum_types::{Bloom, H160, H256, H64, U256, U64};
 use jsonrpc_core::{BoxFuture, Result};
+use rlp::{Decodable, Rlp};
 use serde_json::Value;
 use std::result::Result::Err;
 use web3_rpc_core::{
@@ -583,15 +586,43 @@ impl EthApi for EthApiImpl {
     }
 
     fn send_raw_transaction(&self, tx: Bytes) -> BoxFuture<Result<H256>> {
+        let evm_tx = match TransactionAny::decode(&Rlp::new(tx.0.as_slice())) {
+            Ok(t) => t,
+            Err(e) => {
+                return Box::pin(async move {
+                    Err(new_jsonrpc_error(
+                        "bytes decode to transaction2 error",
+                        Value::String(e.to_string()),
+                    ))
+                });
+            }
+        };
+
+        let tx = Tx::Evm(EvmTx { tx: evm_tx });
+        let bytes = match serde_json::to_vec(&tx) {
+            Ok(b) => b,
+            Err(e) => {
+                return Box::pin(async move {
+                    Err(new_jsonrpc_error(
+                        "tx to bytes error",
+                        Value::String(e.to_string()),
+                    ))
+                });
+            }
+        };
+
         let upstream = self.upstream.clone();
         Box::pin(async move {
-            let tx_param = format!("0x{}", hex::encode(tx.0));
-            let url = format!("{}/{}", upstream, "broadcast_tx_sync");
-            let query: Vec<(String, String)> = vec![("tx".to_string(), tx_param)];
+            let tx_base64 = base64::encode(bytes);
+            let json_rpc = format!(
+                "{{\"jsonrpc\":\"2.0\",\"id\":\"anything\",\"method\":\"broadcast_tx_sync\",\"params\": {{\"tx\": \"{}\"}}}}",
+                &tx_base64
+            );
 
             let resp = reqwest::Client::new()
-                .get(url)
-                .query(&query)
+                .post(upstream)
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .body(json_rpc)
                 .send()
                 .await
                 .map_err(|e| {
@@ -606,6 +637,7 @@ impl EthApi for EthApiImpl {
                     )
                 })?;
 
+            println!("resp:{:?}", resp);
             ruc::d!(resp);
             let mut r = Err(error::new_jsonrpc_error(
                 "send tx to tendermint failed",
