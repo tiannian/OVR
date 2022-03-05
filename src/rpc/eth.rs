@@ -482,7 +482,7 @@ impl EthApi for EthApiImpl {
             return Box::pin(async { Err(e) });
         }
 
-        Box::pin(async move { Ok(U256::from(nonce)) })
+        Box::pin(async move { Ok(nonce) })
     }
 
     fn block_transaction_count_by_hash(
