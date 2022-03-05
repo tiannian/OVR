@@ -238,6 +238,19 @@ impl StateBranch {
 
         let mut r = None;
 
+        macro_rules! create_version_if_first_tx_failed {
+            () => {
+                if !self.state.branch_has_versions(b) {
+                    self.state
+                        .version_create_by_branch(
+                            VsVersion::default().encode_value().as_ref().into(),
+                            b,
+                        )
+                        .c(d!())?;
+                }
+            };
+        }
+
         match tx {
             Tx::Evm(tx) => tx
                 .apply(self, b, false)
@@ -250,12 +263,13 @@ impl StateBranch {
 
                     r = Some(receipt);
                 })
-                .map_err(|e| {
+                .or_else(|e| {
                     pnk!(self.state.version_pop_by_branch(b));
                     if let Some(ret) = e.as_ref() {
+                        create_version_if_first_tx_failed!();
                         self.charge_fee(ret.caller, ret.fee_used, b);
                     }
-                    eg!(e.map(|e| e.to_string()).unwrap_or_default())
+                    Err(eg!(e.map(|e| e.to_string()).unwrap_or_default()))
                 })?,
             Tx::Native(tx) => tx
                 .apply(self, b)
@@ -263,12 +277,13 @@ impl StateBranch {
                     self.charge_fee(ret.caller, ret.fee_used, b);
                     self.tx_hashes_in_process.push(tx_hash);
                 })
-                .map_err(|e| {
+                .or_else(|e| {
                     pnk!(self.state.version_pop_by_branch(b));
                     if let Some(ret) = e.as_ref() {
+                        create_version_if_first_tx_failed!();
                         self.charge_fee(ret.caller, ret.fee_used, b);
                     }
-                    eg!(e.map(|e| e.to_string()).unwrap_or_default())
+                    Err(eg!(e.map(|e| e.to_string()).unwrap_or_default()))
                 })?,
         };
 
@@ -604,5 +619,11 @@ impl VsVersion {
             block_height,
             tx_position,
         }
+    }
+}
+
+impl Default for VsVersion {
+    fn default() -> Self {
+        Self::new(0, 0)
     }
 }

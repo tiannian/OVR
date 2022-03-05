@@ -4,7 +4,6 @@ lint:
 	cargo clippy
 	cargo check --tests
 	cargo check --benches
-	cargo check --examples
 
 test:
 	cargo test -- --test-threads=1
