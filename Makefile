@@ -7,7 +7,6 @@ lint:
 
 test:
 	cargo test -- --test-threads=1
-	cargo test --release -- --test-threads=1
 
 bench:
 	cargo bench
@@ -26,9 +25,9 @@ update:
 doc:
 	cargo doc --open
 
-define pack
+define collect
 	- rm -rf $(1)
-	- rm ~/.cargo/bin/{ovr,ovrd,tendermint}
+	- bash -c "rm ~/.cargo/bin/{ovr,ovrd,tendermint}"
 	mkdir $(1)
 	cp \
 		./target/$(2)/$(1)/ovr \
@@ -43,7 +42,7 @@ endef
 
 build: tendermint
 	cargo build --bins
-	$(call pack,debug)
+	$(call collect,debug)
 
 release: build_release
 
@@ -51,15 +50,15 @@ release_rocksdb: build_release_rocksdb
 
 build_release: tendermint
 	cargo build --release --bins
-	$(call pack,release)
+	$(call collect,release)
 
 build_release_rocksdb: tendermint
 	cargo build --release --bins --no-default-features --features="vsdb_rocksdb"
-	$(call pack,release)
+	$(call collect,release)
 
 build_release_musl: tendermint
 	cargo build --release --bins --target=x86_64-unknown-linux-musl
-	$(call pack,release,x86_64-unknown-linux-musl)
+	$(call collect,release,x86_64-unknown-linux-musl)
 
 tendermint:
 	-@ rm $(shell which tendermint)
@@ -68,6 +67,22 @@ tendermint:
 
 prodenv:
 	bash tools/create_prod_env.sh
+
+run_prodenv:
+	bash tools/create_prod_env.sh prodenv
+	ovr dev -s -n prodenv
+
+start_prodenv:
+	ovr dev -s -n prodenv
+
+stop_prodenv:
+	ovr dev -S -n prodenv
+
+destroy_prodenv:
+	ovr dev -d -n prodenv
+
+show_prodenv:
+	ovr dev -i -n prodenv
 
 
 # CI 

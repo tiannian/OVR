@@ -12,11 +12,9 @@ Cargo.lock
 
 # Added by cargo
 
-/target
-
 debug
 release
 tools/tendermint
 *tar.gz
 
-/contracts
+**/contracts.tmp/

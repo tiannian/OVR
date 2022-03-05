@@ -9,7 +9,7 @@ RUN curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 RUN mkdir -p /opt && \
     cd /opt && \
     wget https://golang.google.cn/dl/go1.15.7.linux-amd64.tar.gz && \
-    tar -xpf go1.15.7.linux-amd64.tar.gz 
+    tar -xpf go1.15.7.linux-amd64.tar.gz
 RUN rustup component add clippy
 RUN rustup target add x86_64-unknown-linux-musl
 ENV PATH=$PATH:/opt/go/bin
