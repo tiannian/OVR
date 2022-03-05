@@ -16,8 +16,7 @@ use crate::{
 use abci::Application;
 use primitive_types::{H160, U256};
 use ruc::*;
-use std::collections::BTreeMap;
-use std::fmt::format;
+use std::{collections::BTreeMap, fmt::format};
 use tmtypes::abci::{
     RequestBeginBlock, RequestCheckTx, RequestDeliverTx, RequestEndBlock, RequestInfo,
     RequestInitChain, ResponseBeginBlock, ResponseCheckTx, ResponseCommit,

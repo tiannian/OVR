@@ -472,40 +472,17 @@ impl EthApi for EthApiImpl {
             }
         };
 
-        let mut tx_count = 0;
+        let mut nonce = U256::zero();
 
-        if let Some(block) = self.state.blocks.get(&height) {
-            for tx in block.txs.iter() {
-                match tx {
-                    Tx::Evm(evm_tx) => {
-                        // Judgement from or to
-                        let (from, to) = evm_tx.get_from_to();
-                        if let Some(from) = from {
-                            if from.eq(&addr) {
-                                tx_count += 1;
-                                continue;
-                            }
-                        }
-
-                        if let Some(to) = to {
-                            if to.eq(&addr) {
-                                tx_count += 1;
-                                continue;
-                            }
-                        }
-                    }
-                    Tx::Native(_) => {
-                        continue;
-                    }
-                };
-            }
+        if let Some(account) = self.state.evm.OFUEL.accounts.get(&addr) {
+            nonce = account.nonce
         }
 
         if let Err(e) = remove_branch_by_name(new_branch_name, Some(&self.state), None) {
             return Box::pin(async { Err(e) });
         }
 
-        Box::pin(async move { Ok(U256::from(tx_count)) })
+        Box::pin(async move { Ok(U256::from(nonce)) })
     }
 
     fn block_transaction_count_by_hash(
@@ -646,7 +623,7 @@ impl EthApi for EthApiImpl {
             if let Some(result) = resp.get("result") {
                 if let Some(code) = result.get("code") {
                     if code.eq(&0) {
-                        r = Ok(H256::default())
+                        r = Ok(block_hash_to_evm_format(&tx.hash()))
                     }
                 }
             }
