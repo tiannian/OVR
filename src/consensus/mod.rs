@@ -161,30 +161,12 @@ impl Application for App {
         let mut resp = ResponseDeliverTx::default();
 
         if let Ok(tx) = Tx::deserialize(&req.tx) {
-            println!("tx is ->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>{:?}", tx);
             if tx.valid_in_abci() {
                 let mut sb = self.ledger.deliver_tx.write();
-                match sb.apply_tx(tx.clone()) {
-                    Ok(receipt) => {
-                        let tx_hash = tx.hash();
-
-                        sb.block_in_process.txs.push(tx);
-                        let tx_index = (sb.block_in_process.txs.len() - 1) as u64;
-
-                        if let Some(mut receipt) = receipt {
-                            receipt.tx_hash = tx_hash.clone();
-                            receipt.tx_index = tx_index;
-                            sb.block_in_process
-                                .header
-                                .receipts
-                                .insert(tx_hash.clone(), receipt);
-                        }
-                    }
-                    Err(e) => {
-                        resp.log = e.to_string();
-                        resp.code = 1;
-                    }
-                };
+                if let Err(e) = sb.apply_tx(tx.clone()) {
+                    resp.log = e.to_string();
+                    resp.code = 1;
+                }
             } else {
                 resp.log = "Should not appear in ABCI".to_owned();
                 resp.code = 1;

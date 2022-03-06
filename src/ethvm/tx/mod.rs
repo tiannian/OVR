@@ -1,8 +1,8 @@
 pub mod meta_tokens;
 
-use super::{impls::stack::OvrStackState, precompile::PRECOMPILE_SET, OvrAccount};
 use crate::{
-    common::HashValue,
+    common::HashValueRef,
+    ethvm::{impls::stack::OvrStackState, precompile::PRECOMPILE_SET, OvrAccount},
     ledger::{Log as LedgerLog, Receipt, StateBranch},
     InitalContract,
 };
@@ -566,10 +566,10 @@ impl ExecRet {
         }
     }
 
-    pub fn gen_logs(&self, tx_hash: HashValue) -> Vec<LedgerLog> {
+    pub fn gen_logs<'a>(&'a self, tx_hash: HashValueRef<'a>) -> Vec<LedgerLog> {
         let mut v = Vec::new();
         for l in self.logs.iter() {
-            v.push(LedgerLog::new_from_eth_log_and_tx_hash(l, &tx_hash));
+            v.push(LedgerLog::new_from_eth_log_and_tx_hash(l, tx_hash));
         }
         v
     }

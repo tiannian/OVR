@@ -1,3 +1,5 @@
+#![deny(warnings)]
+
 pub mod cfg;
 mod common;
 mod consensus;

@@ -29,6 +29,8 @@ for file in $(find .. -path "../target" -a -prune \
     | grep -v '\.git' \
     | grep -v 'target' \
     | grep -v '\.tmp' \
+    | grep -v '/debug/' \
+    | grep -v '/release/' \
     | grep -iv 'Makefile' \
     | grep -v 'tendermint'); do
 

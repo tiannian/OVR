@@ -116,9 +116,12 @@ impl Ledger {
         is_loading: bool,
     ) -> Result<()> {
         let mut main = self.main.write();
+        let mut deliver_tx = self.deliver_tx.write();
+        let mut check_tx = self.check_tx.write();
+
+        // Lock all branches before this operation.
         main.state.refresh_branches().c(d!())?;
 
-        let mut deliver_tx = self.deliver_tx.write();
         let br = deliver_tx.branch.clone();
         deliver_tx.state = main.state.clone();
         deliver_tx
@@ -126,7 +129,6 @@ impl Ledger {
             .branch_set_default(br.as_slice().into())
             .c(d!())?;
 
-        let mut check_tx = self.check_tx.write();
         let br = check_tx.branch.clone();
         check_tx.state = main.state.clone();
         check_tx
@@ -149,6 +151,18 @@ impl Ledger {
     #[inline(always)]
     pub fn commit(&self) -> Result<HashValue> {
         let mut main = self.main.write();
+        {
+            let mut deliver_tx = self.deliver_tx.write();
+            mem::swap(&mut main.block_in_process, &mut deliver_tx.block_in_process);
+            mem::swap(
+                &mut main.tx_hashes_in_process,
+                &mut deliver_tx.tx_hashes_in_process,
+            );
+            // The `DELIVER_TX` branch will be deleted automatically.
+            self.state
+                .branch_merge_to_parent(DELIVER_TX_BRANCH_NAME)
+                .c(d!())?;
+        }
         main.commit().c(d!()).map(|_| main.last_block_hash())
     }
 
@@ -175,13 +189,8 @@ impl Ledger {
 pub struct StateBranch {
     pub state: State,
     pub branch: Vec<u8>,
-    pub tx_hashes_in_process: Vec<HashValue>,
-    pub block_in_process: Block,
-}
-
-pub struct ApplyResp {
-    pub receipt: Option<Receipt>,
-    pub logs: Option<Vec<Log>>,
+    tx_hashes_in_process: Vec<HashValue>,
+    block_in_process: Block,
 }
 
 impl StateBranch {
@@ -199,7 +208,7 @@ impl StateBranch {
     }
 
     // NOTE:
-    // - Only used by the 'main' branch of `Ledger`
+    // - Only triggered by the 'main' branch of `Ledger`
     // - Call this in the 'BeginBlock' field of ABCI
     fn prepare_next_block(&mut self, proposer: TmAddress, timestamp: u64) -> Result<()> {
         self.tx_hashes_in_process.clear();
@@ -227,7 +236,7 @@ impl StateBranch {
 
     // Deal with each transaction.
     // Will be used by all the 3 branches of `Ledger`.
-    pub(crate) fn apply_tx(&mut self, tx: Tx) -> Result<Option<Receipt>> {
+    pub(crate) fn apply_tx(&mut self, tx: Tx) -> Result<()> {
         let b = self.branch.clone();
         let b = b.as_slice().into();
 
@@ -240,8 +249,6 @@ impl StateBranch {
             .c(d!())?;
 
         let tx_hash = tx.hash();
-
-        let mut r = None;
 
         macro_rules! create_version_if_first_tx_failed {
             () => {
@@ -256,17 +263,22 @@ impl StateBranch {
             };
         }
 
-        match tx {
-            Tx::Evm(tx) => tx
+        match tx.clone() {
+            Tx::Evm(evm_tx) => evm_tx
                 .apply(self, b, false)
                 .map(|(ret, mut receipt)| {
                     self.charge_fee(ret.caller, ret.fee_used, b);
                     self.tx_hashes_in_process.push(tx_hash.clone());
+                    self.block_in_process.txs.push(tx);
 
-                    let mut logs = ret.gen_logs(tx_hash);
+                    let mut logs = ret.gen_logs(&tx_hash);
                     receipt.add_logs(logs.as_mut_slice());
-
-                    r = Some(receipt);
+                    receipt.tx_hash = tx_hash.clone();
+                    receipt.tx_index = self.tx_hashes_in_process.len() as u64 - 1;
+                    self.block_in_process
+                        .header
+                        .receipts
+                        .insert(tx_hash, receipt);
                 })
                 .or_else(|e| {
                     pnk!(self.state.version_pop_by_branch(b));
@@ -276,11 +288,12 @@ impl StateBranch {
                     }
                     Err(eg!(e.map(|e| e.to_string()).unwrap_or_default()))
                 })?,
-            Tx::Native(tx) => tx
+            Tx::Native(native_tx) => native_tx
                 .apply(self, b)
                 .map(|ret| {
                     self.charge_fee(ret.caller, ret.fee_used, b);
                     self.tx_hashes_in_process.push(tx_hash);
+                    self.block_in_process.txs.push(tx);
                 })
                 .or_else(|e| {
                     pnk!(self.state.version_pop_by_branch(b));
@@ -292,11 +305,11 @@ impl StateBranch {
                 })?,
         };
 
-        Ok(r)
+        Ok(())
     }
 
     // NOTE:
-    // - Only used by the 'main' branch of the `Ledger`
+    // - Only triggered by the 'main' branch of the `Ledger`
     fn commit(&mut self) -> Result<()> {
         // Make it never empty,
         // thus the root hash will always exist
@@ -435,13 +448,17 @@ pub struct State {
 impl State {
     fn refresh_branches(&self) -> Result<()> {
         self.branch_remove(CHECK_TX_BRANCH_NAME).c(d!())?;
-        self.branch_merge_to_parent(DELIVER_TX_BRANCH_NAME)
-            .c(d!())?;
+
+        // The `DELIVER_TX` branch should has been deleted in the process of `commit`,
+        // the trial deleting operation here is used to deal with some special scenes.
+        omit!(self.branch_remove(DELIVER_TX_BRANCH_NAME).c(d!()));
+
         self.branch_create_by_base_branch(
             DELIVER_TX_BRANCH_NAME,
             ParentBranchName::from(MAIN_BRANCH_NAME.0),
         )
         .c(d!())?;
+
         self.branch_create_by_base_branch(
             CHECK_TX_BRANCH_NAME,
             ParentBranchName::from(MAIN_BRANCH_NAME.0),
@@ -480,76 +497,6 @@ impl Block {
             txs: Vecx::new(),
             bloom: Bloom::default().as_bytes().to_vec(),
             ..Default::default()
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct Receipt {
-    // transaction hash
-    pub tx_hash: HashValue,
-    // transaction index in block
-    pub tx_index: u64,
-    // transaction originator
-    pub from: Option<H160>,
-    // transaction recipients
-    pub to: Option<H160>,
-    // the total amount of gas used for all transactions in this block
-    pub block_gas_used: U256,
-    // gas used for transaction
-    pub tx_gas_used: U256,
-    // here is contract address if recipients is none
-    pub contract_addr: Option<H160>,
-    // TODO: to be filled
-    pub state_root: Option<HashValue>,
-    // execute success or failure
-    pub status_code: bool,
-    // logs
-    pub logs: Vec<Log>,
-}
-
-impl Receipt {
-    pub fn add_logs(&mut self, logs: &mut [Log]) {
-        for (index, log) in logs.iter_mut().enumerate() {
-            log.tx_index = self.tx_index;
-            log.log_index_in_tx = index as u64;
-        }
-
-        self.logs = logs.to_vec();
-    }
-}
-
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct Log {
-    // source address of this log
-    pub address: H160,
-    // 0 to 4 32 bytes of data for the index log parameter. In solidity, the first topic is event signatures
-    pub topics: Vec<H256>,
-    // One or more 32-byte un-indexed parameters containing this log
-    pub data: Vec<u8>,
-    // transaction hash
-    pub tx_hash: HashValue,
-    // transaction index in block
-    pub tx_index: u64,
-    // log index in block
-    pub log_index_in_block: u64,
-    // log index in transaction
-    pub log_index_in_tx: u64,
-    // returns true if the log has been deleted, false if it is a valid log
-    pub removed: bool,
-}
-
-impl Log {
-    pub fn new_from_eth_log_and_tx_hash(log: &EthLog, tx_hash: &HashValue) -> Self {
-        Self {
-            address: log.address,
-            topics: log.topics.clone(),
-            data: log.data.clone(),
-            tx_hash: tx_hash.clone(),
-            tx_index: 0,
-            log_index_in_block: 0,
-            log_index_in_tx: 0,
-            removed: false,
         }
     }
 }
@@ -624,5 +571,83 @@ impl VsVersion {
 impl Default for VsVersion {
     fn default() -> Self {
         Self::new(0, 0)
+    }
+}
+
+pub struct ApplyResp {
+    pub receipt: Option<Receipt>,
+    pub logs: Option<Vec<Log>>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct Receipt {
+    // transaction hash
+    pub tx_hash: HashValue,
+    // transaction index in block
+    pub tx_index: u64,
+    // transaction originator
+    pub from: Option<H160>,
+    // transaction recipients
+    pub to: Option<H160>,
+    // the total amount of gas used for all transactions in this block
+    pub block_gas_used: U256,
+    // gas used for transaction
+    pub tx_gas_used: U256,
+    // here is contract address if recipients is none
+    pub contract_addr: Option<H160>,
+    // TODO: to be filled
+    pub state_root: Option<HashValue>,
+    // execute success or failure
+    pub status_code: bool,
+    // logs
+    pub logs: Vec<Log>,
+}
+
+impl Receipt {
+    pub fn add_logs(&mut self, logs: &mut [Log]) {
+        for (index, log) in logs.iter_mut().enumerate() {
+            log.tx_index = self.tx_index;
+            log.log_index_in_tx = index as u64;
+        }
+
+        self.logs = logs.to_vec();
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct Log {
+    // source address of this log
+    pub address: H160,
+    // 0 to 4 32 bytes of data for the index log parameter. In solidity, the first topic is event signatures
+    pub topics: Vec<H256>,
+    // One or more 32-byte un-indexed parameters containing this log
+    pub data: Vec<u8>,
+    // transaction hash
+    pub tx_hash: HashValue,
+    // transaction index in block
+    pub tx_index: u64,
+    // log index in block
+    pub log_index_in_block: u64,
+    // log index in transaction
+    pub log_index_in_tx: u64,
+    // returns true if the log has been deleted, false if it is a valid log
+    pub removed: bool,
+}
+
+impl Log {
+    pub fn new_from_eth_log_and_tx_hash<'a>(
+        log: &'a EthLog,
+        tx_hash: HashValueRef<'a>,
+    ) -> Self {
+        Self {
+            address: log.address,
+            topics: log.topics.clone(),
+            data: log.data.clone(),
+            tx_hash: tx_hash.to_owned(),
+            tx_index: 0,
+            log_index_in_block: 0,
+            log_index_in_tx: 0,
+            removed: false,
+        }
     }
 }
