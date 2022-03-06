@@ -11,5 +11,5 @@ pub mod tx;
 pub use cfg::{Cfg, Commands, DaemonCfg};
 pub use common::{InitalContract, InitalState};
 pub use consensus::App;
-pub use ethvm::tx::{meta_tokens::DECIMAL, Tx as EvmTx};
+pub use ethvm::tx::{token::DECIMAL, Tx as EvmTx};
 pub use tx::native::Tx as NativeTx;

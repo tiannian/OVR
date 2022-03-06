@@ -14,7 +14,7 @@ use impls::backend::OvrBackend;
 use primitive_types::{H160, H256, U256};
 use ruc::*;
 use serde::{Deserialize, Serialize};
-use tx::meta_tokens::Erc20Like;
+use tx::token::Erc20Like;
 use vsdb::{BranchName, MapxOrd, OrphanVs, Vs, VsMgmt};
 use web3_rpc_core::types::{BlockNumber, CallRequest};
 
@@ -125,23 +125,6 @@ impl State {
             block_gas_limit: self.block_gas_limit.get_value(),
             block_base_fee_per_gas: self.block_base_fee_per_gas.get_value(),
         };
-    }
-
-    // fn get_token_hdr(&self, contract_addr: H160) -> &Erc20Like {
-    //     if Erc20Like::addr_is_ofuel(contract_addr) {
-    //         &self.OFUEL
-    //     } else {
-    //         unreachable!()
-    //     }
-    // }
-
-    #[inline(always)]
-    fn get_token_hdr_mut(&mut self, contract_addr: H160) -> &mut Erc20Like {
-        if Erc20Like::addr_is_ofuel(contract_addr) {
-            &mut self.OFUEL
-        } else {
-            unreachable!()
-        }
     }
 }
 
