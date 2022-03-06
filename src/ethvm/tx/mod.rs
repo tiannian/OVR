@@ -1,4 +1,4 @@
-pub mod meta_tokens;
+pub mod token;
 
 use crate::{
     common::HashValueRef,
@@ -9,12 +9,9 @@ use crate::{
 use ethereum::{Log, TransactionAction, TransactionAny};
 use evm::{
     backend::{Apply, ApplyBackend},
-    executor::stack::{
-        PrecompileFailure, PrecompileOutput, StackExecutor, StackSubstateMetadata,
-    },
+    executor::stack::{StackExecutor, StackSubstateMetadata},
     Config as EvmCfg, CreateScheme, ExitReason,
 };
-use meta_tokens::Erc20Like;
 use once_cell::sync::Lazy;
 use primitive_types::{H160, H256, U256};
 use ruc::*;
@@ -25,25 +22,11 @@ use vsdb::BranchName;
 
 pub static GAS_PRICE_MIN: Lazy<U256> = Lazy::new(|| U256::from(10u8));
 
-type GasPrice = U256;
 type NeededAmount = U256;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Tx {
     pub tx: TransactionAny,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct TxCommonProperties {
-    pub nonce: U256,
-    pub gas_limit: U256,
-    pub gas_price: U256,
-    pub action: TransactionAction,
-    pub value: U256,
-    pub input: Vec<u8>,
-    pub r: H256,
-    pub s: H256,
-    pub v: u8,
 }
 
 impl Tx {
@@ -54,9 +37,9 @@ impl Tx {
         b: BranchName,
         estimate: bool,
     ) -> StdResult<(ExecRet, Receipt), Option<ExecRet>> {
-        if let Ok((addr, _, gas_price)) = info!(self.pre_exec(sb, b)) {
+        if let Ok((addr, _)) = info!(self.pre_exec(sb, b)) {
             let (from, to) = self.get_from_to();
-            let ret = self.exec(addr, gas_price, sb, b, estimate);
+            let ret = self.exec(addr, sb, b, estimate);
             let r = ret.gen_receipt(from, to);
             alt!(ret.success, Ok((ret, r)), Err(Some(ret)))
         } else {
@@ -73,7 +56,7 @@ impl Tx {
         &self,
         sb: &mut StateBranch,
         b: BranchName,
-    ) -> Result<(H160, OvrAccount, GasPrice)> {
+    ) -> Result<(H160, OvrAccount)> {
         // {0.}
         let gas_price = self.check_gas_price(sb, b).c(d!())?;
 
@@ -91,7 +74,7 @@ impl Tx {
 
         // {3.}{4.}
         match self.check_balance(&addr, gas_price, sb, b) {
-            Ok((account, _)) => Ok((addr, account, gas_price)),
+            Ok((account, _)) => Ok((addr, account)),
             Err(Some((account, needed_amount))) => Err(eg!(
                 "Insufficient balance, needed: {}, total: {}",
                 needed_amount,
@@ -108,7 +91,6 @@ impl Tx {
     fn exec(
         self,
         addr: H160,
-        gas_price: GasPrice,
         sb: &mut StateBranch,
         b: BranchName,
         estimate: bool,
@@ -124,41 +106,26 @@ impl Tx {
         let mut executor =
             StackExecutor::new_with_precompiles(state, &evm_cfg, &precompiles);
 
-        enum Ret {
-            Precompile(StdResult<PrecompileOutput, PrecompileFailure>),
-            Normal((ExitReason, Vec<u8>)),
-        }
-
         let contract_addr;
-        let ret = match self.tx {
+        let (exit_reason, extra_data) = match self.tx {
             TransactionAny::Legacy(tx) => {
                 let gas_limit = tx.gas_limit.try_into().unwrap_or(u64::MAX);
                 match tx.action {
                     TransactionAction::Call(target) => {
                         contract_addr = target;
-                        if Erc20Like::addr_is_meta_token(target) {
-                            Ret::Precompile(Erc20Like::execute(
-                                sb,
-                                target,
-                                addr,
-                                &tx.input,
-                                Some(gas_limit),
-                            ))
-                        } else {
-                            Ret::Normal(executor.transact_call(
-                                addr,
-                                target,
-                                tx.value,
-                                tx.input,
-                                gas_limit,
-                                vec![],
-                            ))
-                        }
+                        executor.transact_call(
+                            addr,
+                            target,
+                            tx.value,
+                            tx.input,
+                            gas_limit,
+                            vec![],
+                        )
                     }
                     TransactionAction::Create => {
                         let scheme = CreateScheme::Legacy { caller: addr };
                         contract_addr = executor.create_address(scheme);
-                        Ret::Normal((
+                        (
                             executor.transact_create(
                                 addr,
                                 tx.value,
@@ -167,7 +134,7 @@ impl Tx {
                                 vec![],
                             ),
                             vec![],
-                        ))
+                        )
                     }
                 }
             }
@@ -181,29 +148,19 @@ impl Tx {
                 match tx.action {
                     TransactionAction::Call(target) => {
                         contract_addr = target;
-                        if Erc20Like::addr_is_meta_token(target) {
-                            Ret::Precompile(Erc20Like::execute(
-                                sb,
-                                target,
-                                addr,
-                                &tx.input,
-                                Some(gas_limit),
-                            ))
-                        } else {
-                            Ret::Normal(executor.transact_call(
-                                addr, target, tx.value, tx.input, gas_limit, al,
-                            ))
-                        }
+                        executor.transact_call(
+                            addr, target, tx.value, tx.input, gas_limit, al,
+                        )
                     }
                     TransactionAction::Create => {
                         let scheme = CreateScheme::Legacy { caller: addr };
                         contract_addr = executor.create_address(scheme);
-                        Ret::Normal((
+                        (
                             executor.transact_create(
                                 addr, tx.value, tx.input, gas_limit, al,
                             ),
                             vec![],
-                        ))
+                        )
                     }
                 }
             }
@@ -217,93 +174,46 @@ impl Tx {
                 match tx.action {
                     TransactionAction::Call(target) => {
                         contract_addr = target;
-                        if Erc20Like::addr_is_meta_token(target) {
-                            Ret::Precompile(Erc20Like::execute(
-                                sb,
-                                target,
-                                addr,
-                                &tx.input,
-                                Some(gas_limit),
-                            ))
-                        } else {
-                            Ret::Normal(executor.transact_call(
-                                addr, target, tx.value, tx.input, gas_limit, al,
-                            ))
-                        }
+                        executor.transact_call(
+                            addr, target, tx.value, tx.input, gas_limit, al,
+                        )
                     }
                     TransactionAction::Create => {
                         let scheme = CreateScheme::Legacy { caller: addr };
                         contract_addr = executor.create_address(scheme);
-                        Ret::Normal((
+                        (
                             executor.transact_create(
                                 addr, tx.value, tx.input, gas_limit, al,
                             ),
                             vec![],
-                        ))
+                        )
                     }
                 }
             }
         };
 
-        match ret {
-            Ret::Precompile(ret) => {
-                let (success, exit_reason, gas_used, extra_data, logs) = match ret {
-                    Ok(info) => (
-                        true,
-                        ExitReason::Succeed(info.exit_status),
-                        info.cost.into(),
-                        info.output,
-                        info.logs,
-                    ),
-                    Err(info) => {
-                        let exit_reason =
-                            if let PrecompileFailure::Error { exit_status } = info {
-                                exit_status.into()
-                            } else {
-                                unreachable!()
-                            };
-                        (false, exit_reason, gas_price, vec![], vec![])
-                    }
-                };
-                sb.state.evm.get_backend_hdr(b).apply(
-                    Vec::<Apply<BTreeMap<H256, H256>>>::new(),
-                    logs.clone(),
-                    false,
-                );
-                ExecRet::new(
-                    success,
-                    exit_reason,
-                    gas_used,
-                    extra_data,
-                    addr,
-                    contract_addr,
-                    logs,
-                )
-            }
-            Ret::Normal((exit_reason, extra_data)) => {
-                let gas_used = U256::from(executor.used_gas());
-                let success = matches!(exit_reason, ExitReason::Succeed(_));
-                let (changes, logs) = executor.into_state().deconstruct();
-                if success {
-                    backend.apply(changes, logs.clone(), false);
-                } else {
-                    backend.apply(
-                        Vec::<Apply<BTreeMap<H256, H256>>>::new(),
-                        logs.clone(),
-                        false,
-                    );
-                }
-                ExecRet::new(
-                    success,
-                    exit_reason,
-                    gas_used,
-                    extra_data,
-                    addr,
-                    contract_addr,
-                    logs,
-                )
-            }
+        let gas_used = U256::from(executor.used_gas());
+        let success = matches!(exit_reason, ExitReason::Succeed(_));
+        let (changes, logs) = executor.into_state().deconstruct();
+        if success {
+            backend.apply(changes, logs.clone(), false);
+        } else {
+            backend.apply(
+                Vec::<Apply<BTreeMap<H256, H256>>>::new(),
+                logs.clone(),
+                false,
+            );
         }
+
+        ExecRet::new(
+            success,
+            exit_reason,
+            gas_used,
+            extra_data,
+            addr,
+            contract_addr,
+            logs,
+        )
     }
 
     #[inline(always)]
@@ -579,6 +489,19 @@ impl fmt::Display for ExecRet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", serde_json::to_string(self).unwrap())
     }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct TxCommonProperties {
+    pub nonce: U256,
+    pub gas_limit: U256,
+    pub gas_price: U256,
+    pub action: TransactionAction,
+    pub value: U256,
+    pub input: Vec<u8>,
+    pub r: H256,
+    pub s: H256,
+    pub v: u8,
 }
 
 pub fn inital_create2(

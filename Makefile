@@ -12,6 +12,9 @@ bench:
 	cargo bench
 
 fmt:
+	cargo +nightly fmt
+
+fmtall:
 	bash tools/fmt.sh
 
 clean:
