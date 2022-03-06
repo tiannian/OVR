@@ -95,7 +95,7 @@ impl Erc20Like {
             "0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000054f4655454c000000000000000000000000000000000000000000000000000000"
         );
         let issue_cap = None;
-        let contract_addr = idx_to_h160(0x1000); // Compitable with Findora
+        let contract_addr = idx_to_h160(0x1000); // Compitable with F
         Self::new(
             name.to_vec(),
             symbol.to_vec(),

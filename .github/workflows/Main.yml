@@ -90,7 +90,7 @@ jobs:
         export VERGEN_SHA_EXTERN="${IMAGE_TAG}"
         echo "Image tag: ${IMAGE_TAG}"
         make ci_build_release_binary_image
-    - name: Build findorad images
+    - name: Build ovrd images
       env:
         PRIVATE_ECR_URL: ${{ env.PRIVATE_ECR_URL }}
         PUBLIC_ECR_URL: ${{ env.PUBLIC_ECR_URL }}
