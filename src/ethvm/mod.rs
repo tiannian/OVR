@@ -53,9 +53,13 @@ impl State {
         let value = req.value.unwrap_or_default();
         let data = req.data.unwrap_or_default();
         // This parameter is used as the divisor and cannot be 0
-        let gas_price = req.gas_price.unwrap_or_else(U256::one);
-        let gas = req.gas.unwrap_or_default();
-        let gas_limit = gas.checked_div(gas_price).unwrap().as_u64();
+        let gas_price = req.gas_price.unwrap_or_else(U256::one).as_u64();
+        let gas = if let Some(gas) = req.gas {
+            gas.as_u64()
+        } else {
+            u64::MAX
+        };
+        let gas_limit = gas.checked_div(gas_price).unwrap();
 
         let height = block_number_to_height(bn, None, Some(self));
 

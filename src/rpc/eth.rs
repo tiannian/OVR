@@ -614,7 +614,6 @@ impl EthApi for EthApiImpl {
                     )
                 })?;
 
-            println!("resp:{:?}", resp);
             ruc::d!(resp);
             let mut r = Err(error::new_jsonrpc_error(
                 "send tx to tendermint failed",
