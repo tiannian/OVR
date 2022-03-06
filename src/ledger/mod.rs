@@ -20,7 +20,7 @@ use parking_lot::RwLock;
 use primitive_types::{H160, H256, U256};
 use ruc::*;
 use serde::{Deserialize, Serialize};
-use std::{fs, io::ErrorKind, mem, sync::Arc};
+use std::{collections::BTreeMap, fs, io::ErrorKind, mem, sync::Arc};
 use vsdb::{
     merkle::{MerkleTree, MerkleTreeStore},
     BranchName, MapxOrd, OrphanVs, ParentBranchName, ValueEn, ValueEnDe, Vecx, Vs,
@@ -116,11 +116,7 @@ impl Ledger {
         is_loading: bool,
     ) -> Result<()> {
         let mut main = self.main.write();
-        if !is_loading {
-            main.prepare_next_block(proposer, timestamp).c(d!())?;
-        }
         main.state.refresh_branches().c(d!())?;
-        main.clean_cache();
 
         let mut deliver_tx = self.deliver_tx.write();
         let br = deliver_tx.branch.clone();
@@ -129,7 +125,6 @@ impl Ledger {
             .state
             .branch_set_default(br.as_slice().into())
             .c(d!())?;
-        deliver_tx.clean_cache();
 
         let mut check_tx = self.check_tx.write();
         let br = check_tx.branch.clone();
@@ -138,7 +133,15 @@ impl Ledger {
             .state
             .branch_set_default(br.as_slice().into())
             .c(d!())?;
-        check_tx.clean_cache();
+
+        if !is_loading {
+            main.prepare_next_block(proposer.clone(), timestamp)
+                .c(d!())?;
+            deliver_tx
+                .prepare_next_block(proposer.clone(), timestamp)
+                .c(d!())?;
+            check_tx.prepare_next_block(proposer, timestamp).c(d!())?;
+        }
 
         Ok(())
     }
@@ -215,7 +218,9 @@ impl StateBranch {
             .version_create_by_branch(ver.encode_value().as_ref().into(), b)
             .c(d!())?;
 
-        self.update_evm_aux(b);
+        if b == MAIN_BRANCH_NAME {
+            self.update_evm_aux(b);
+        }
 
         Ok(())
     }
@@ -412,11 +417,6 @@ impl StateBranch {
         let contents = self.encode();
         fs::write(&*LEDGER_SNAPSHOT_PATH, &contents).c(d!())
     }
-
-    #[inline(always)]
-    fn clean_cache(&mut self) {
-        self.tx_hashes_in_process.clear();
-    }
 }
 
 #[derive(Vs, Default, Clone, Debug, Deserialize, Serialize)]
@@ -450,7 +450,7 @@ impl State {
     }
 }
 
-#[derive(Vs, Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct Block {
     pub header: BlockHeader,
     pub header_hash: HashValue,
@@ -468,19 +468,18 @@ impl Block {
         timestamp: u64,
         prev_hash: HashValue,
     ) -> Self {
+        let header = BlockHeader {
+            height,
+            proposer,
+            timestamp,
+            prev_hash,
+            ..Default::default()
+        };
         Self {
-            header: BlockHeader {
-                height,
-                proposer,
-                timestamp,
-                tx_merkle: TxMerkle::default(),
-                prev_hash,
-                receipts: MapxOrd::default(),
-            },
-            header_hash: Default::default(),
-            txs: Vecx::default(),
-            // logs: MapxOrd::default(),
+            header,
+            txs: Vecx::new(),
             bloom: Bloom::default().as_bytes().to_vec(),
+            ..Default::default()
         }
     }
 }
@@ -555,7 +554,7 @@ impl Log {
     }
 }
 
-#[derive(Vs, Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct BlockHeader {
     // height of the current block
     pub height: BlockHeight,
@@ -568,7 +567,7 @@ pub struct BlockHeader {
     // hash of the previous block header
     pub prev_hash: HashValue,
     // execution results for each transaction
-    pub receipts: MapxOrd<HashValue, Receipt>,
+    pub receipts: BTreeMap<HashValue, Receipt>,
 }
 
 impl BlockHeader {
@@ -581,7 +580,7 @@ impl BlockHeader {
             timestamp: u64,
             merkle_root: HashValueRef<'a>,
             prev_hash: HashValueRef<'a>,
-            receipts: &'a MapxOrd<HashValue, Receipt>,
+            receipts: &'a BTreeMap<HashValue, Receipt>,
         }
 
         let contents = Contents {
@@ -598,7 +597,7 @@ impl BlockHeader {
     }
 }
 
-#[derive(Vs, Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct TxMerkle {
     pub root_hash: HashValue,
     pub tree: MerkleTreeStore,

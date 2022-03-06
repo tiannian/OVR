@@ -26,15 +26,14 @@ doc:
 	cargo doc --open
 
 define collect
-	- rm -rf $(1)
-	- bash -c "rm ~/.cargo/bin/{ovr,ovrd,tendermint}"
+	-@ rm -rf $(1)
 	mkdir $(1)
 	cp \
 		./target/$(2)/$(1)/ovr \
 		./target/$(2)/$(1)/ovrd \
 		$(shell go env GOPATH)/bin/tendermint \
 		$(1)/
-	cp $(1)/* ~/.cargo/bin/
+	cp -f $(1)/* ~/.cargo/bin/
 	cd $(1)/ && ./ovrd pack
 	cp -f /tmp/ovrd $(1)/
 	cp -f /tmp/ovrd ~/.cargo/bin/

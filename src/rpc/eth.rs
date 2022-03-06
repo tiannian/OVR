@@ -276,7 +276,7 @@ impl EthApi for EthApiImpl {
                     let proposer = tm_proposer_to_evm_format(&block.header.proposer);
 
                     let receipt = if let Some((_, receipt)) =
-                        block.header.receipts.last()
+                        block.header.receipts.iter().last()
                     {
                         receipt
                     } else {
@@ -789,11 +789,11 @@ impl EthApi for EthApiImpl {
             if let Some(r) = block.header.receipts.get(&hash) {
                 let mut logs = vec![];
 
-                for l in r.logs {
+                for l in r.logs.iter() {
                     logs.push(Log {
                         address: l.address,
-                        topics: l.topics,
-                        data: Bytes::new(l.data),
+                        topics: l.topics.clone(),
+                        data: Bytes::new(l.data.clone()),
                         block_hash: Some(block_hash),
                         block_number: Some(U256::from(height)),
                         transaction_hash: Some(tx_hash),
