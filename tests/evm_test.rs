@@ -1,8 +1,9 @@
 #![allow(warnings)]
 
 use ethereum::{
-    LegacyTransaction, TransactionAction, TransactionAny, TransactionSignature,
-    TransactionV1, TransactionV2,
+    AccessListItem, EIP1559Transaction, EIP2930Transaction, LegacyTransaction,
+    TransactionAction, TransactionAny, TransactionSignature, TransactionV1,
+    TransactionV2,
 };
 use evm::backend::ApplyBackend;
 use fevm::ExitReason;
@@ -486,4 +487,241 @@ fn test_evm_contract() {
         "acc2 erc20 balance is {}, expected {}",
         acc2_erc20_balance, acc2_expected_balance
     );
+}
+
+#[test]
+fn test_legacy_tx() {
+    let ledger = init_state();
+    let mut sb = StateBranch::new(&ledger.state, BranchName(b"Main")).unwrap();
+    let addr1 = H160::from_str(ADDR1).unwrap();
+    let addr2 = H160::from_str(ADDR2).unwrap();
+
+    let r = H256([
+        57, 149, 22, 170, 249, 82, 224, 123, 220, 61, 8, 93, 111, 212, 254, 10, 135, 74,
+        92, 173, 250, 4, 154, 126, 109, 101, 218, 161, 180, 13, 177, 186,
+    ]);
+    let s = H256([
+        63, 37, 146, 220, 140, 130, 87, 239, 223, 113, 55, 215, 173, 89, 242, 54, 186,
+        139, 202, 101, 204, 108, 36, 4, 27, 144, 73, 85, 164, 251, 54, 242,
+    ]);
+
+    let tx = LegacyTransaction {
+        nonce: U256::from(10u128),
+        gas_price: U256::from(10000000000u128),
+        gas_limit: U256::from(3000000u128),
+        action: TransactionAction::Call(addr1),
+        value: U256::from(1000000000u128),
+        input: vec![],
+        signature: TransactionSignature::new(2503, r, s).unwrap(),
+    };
+
+    let tx_v1 = TransactionV1::from(tx.clone());
+    let evm_tx = EvmTx {
+        tx: TransactionAny::from(tx_v1),
+    };
+    let t = tx::Tx::Evm(evm_tx.clone());
+    let serialized = serde_json::to_vec(&t).unwrap();
+    let raw_transfer_tx = hex::encode(serialized);
+    println!("transfer tx:\n{:?}\n", raw_transfer_tx);
+
+    let _ = sb.apply_tx(t);
+
+    let acc1 = ledger
+        .state
+        .evm
+        .OFUEL
+        .accounts
+        .get_by_branch(&addr1, BranchName(b"Main"))
+        .unwrap();
+    let acc2 = ledger
+        .state
+        .evm
+        .OFUEL
+        .accounts
+        .get_by_branch(&addr2, BranchName(b"Main"))
+        .unwrap();
+
+    assert_eq!(
+        U256::from_dec_str("1000000000000000000000000").unwrap()
+            + U256::from_dec_str("1000000000").unwrap(),
+        acc1.balance,
+        "acc1 balance error"
+    );
+    println!("acc1 balance: {:?}\n", acc1.balance);
+    println!("acc2 balance: {:?}\n", acc2.balance);
+
+    let acc2_balance_without_tx_fee = U256::from_dec_str("1000000000000000000000000")
+        .unwrap()
+        - U256::from_dec_str("1000000000").unwrap();
+    assert!(
+        acc2.balance < acc2_balance_without_tx_fee,
+        "the tx fee of acc2 is not deducted"
+    );
+    println!("tx fee: {:?}\n", acc2_balance_without_tx_fee - acc2.balance);
+}
+
+#[test]
+fn test_eip2930_tx() {
+    let ledger = init_state();
+    let mut sb = StateBranch::new(&ledger.state, BranchName(b"Main")).unwrap();
+    let addr1 = H160::from_str(ADDR1).unwrap();
+    let addr2 = H160::from_str(ADDR2).unwrap();
+
+    let tx = TransactionV1::EIP2930(EIP2930Transaction {
+        chain_id: 1234,
+        nonce: 10.into(),
+        gas_price: 30_000_000_000_u64.into(),
+        gas_limit: 6_000_000_u64.into(),
+        action: TransactionAction::Call(addr1),
+        value: U256::from(1) * 1_000_000_000,
+        input: vec![],
+        access_list: vec![AccessListItem {
+            address: H160::from_str("fa3805d34f4dc1da443a6b606feeb37374f472b1").unwrap(),
+            slots: vec![
+                H256::from_str(
+                    "0000000000000000000000000000000000000000000000000000000000000003",
+                )
+                .unwrap(),
+                H256::from_str(
+                    "0000000000000000000000000000000000000000000000000000000000000007",
+                )
+                .unwrap(),
+            ],
+        }],
+        odd_y_parity: false,
+        r: H256::from_str(
+            "808fc214163e17777b8ce96729f85440caaaf965259e9a996766661bc33550f4",
+        )
+        .unwrap(),
+        s: H256::from_str(
+            "6fc97fe2819d5f5d67e615651d06319d520719eee93b726179231d0a3e8b78fd",
+        )
+        .unwrap(),
+    });
+
+    let evm_tx = EvmTx {
+        tx: TransactionAny::from(tx),
+    };
+    let t = tx::Tx::Evm(evm_tx.clone());
+    let serialized = serde_json::to_vec(&t).unwrap();
+    let raw_transfer_tx = hex::encode(serialized);
+    println!("transfer tx:\n{:?}\n", raw_transfer_tx);
+
+    let _ = sb.apply_tx(t);
+
+    let acc1 = ledger
+        .state
+        .evm
+        .OFUEL
+        .accounts
+        .get_by_branch(&addr1, BranchName(b"Main"))
+        .unwrap();
+    let acc2 = ledger
+        .state
+        .evm
+        .OFUEL
+        .accounts
+        .get_by_branch(&addr2, BranchName(b"Main"))
+        .unwrap();
+
+    assert_eq!(
+        U256::from_dec_str("1000000000000000000000000").unwrap()
+            + U256::from_dec_str("1000000000").unwrap(),
+        acc1.balance,
+        "acc1 balance error"
+    );
+    println!("acc1 balance: {:?}\n", acc1.balance);
+    println!("acc2 balance: {:?}\n", acc2.balance);
+
+    let acc2_balance_without_tx_fee = U256::from_dec_str("1000000000000000000000000")
+        .unwrap()
+        - U256::from_dec_str("1000000000").unwrap();
+    assert!(
+        acc2.balance < acc2_balance_without_tx_fee,
+        "the tx fee of acc2 is not deducted"
+    );
+    println!("tx fee: {:?}\n", acc2_balance_without_tx_fee - acc2.balance);
+}
+
+#[test]
+fn test_eip1559_tx() {
+    let ledger = init_state();
+    let mut sb = StateBranch::new(&ledger.state, BranchName(b"Main")).unwrap();
+    let addr1 = H160::from_str(ADDR1).unwrap();
+    let addr2 = H160::from_str(ADDR2).unwrap();
+    let tx = TransactionV2::EIP1559(EIP1559Transaction {
+        chain_id: 1234,
+        nonce: 10.into(),
+        max_priority_fee_per_gas: 10_000_000_000_u64.into(),
+        max_fee_per_gas: 30_000_000_000_u64.into(),
+        gas_limit: 6_000_000_u64.into(),
+        action: TransactionAction::Call(addr1),
+        value: U256::from(1) * 1_000_000_000,
+        input: vec![],
+        access_list: vec![AccessListItem {
+            address: H160::from_str("fa3805d34f4dc1da443a6b606feeb37374f472b1").unwrap(),
+            slots: vec![
+                H256::from_str(
+                    "0000000000000000000000000000000000000000000000000000000000000003",
+                )
+                .unwrap(),
+                H256::from_str(
+                    "0000000000000000000000000000000000000000000000000000000000000007",
+                )
+                .unwrap(),
+            ],
+        }],
+        odd_y_parity: false,
+        r: H256::from_str(
+            "5e25a18b7d0722c79abfd95f2990b26457458d6c0b732db8fcfa4ababd60611e",
+        )
+        .unwrap(),
+        s: H256::from_str(
+            "62c93cfc833a8d9885b6840c234ccaea11fdf98f5b0a9f558c5e57b0bd6046ac",
+        )
+        .unwrap(),
+    });
+
+    let evm_tx = EvmTx {
+        tx: TransactionAny::from(tx),
+    };
+    let t = tx::Tx::Evm(evm_tx.clone());
+    let serialized = serde_json::to_vec(&t).unwrap();
+    let raw_transfer_tx = hex::encode(serialized);
+    println!("transfer tx:\n{:?}\n", raw_transfer_tx);
+
+    let _ = sb.apply_tx(t);
+
+    let acc1 = ledger
+        .state
+        .evm
+        .OFUEL
+        .accounts
+        .get_by_branch(&addr1, BranchName(b"Main"))
+        .unwrap();
+    let acc2 = ledger
+        .state
+        .evm
+        .OFUEL
+        .accounts
+        .get_by_branch(&addr2, BranchName(b"Main"))
+        .unwrap();
+
+    assert_eq!(
+        U256::from_dec_str("1000000000000000000000000").unwrap()
+            + U256::from_dec_str("1000000000").unwrap(),
+        acc1.balance,
+        "acc1 balance error"
+    );
+    println!("acc1 balance: {:?}\n", acc1.balance);
+    println!("acc2 balance: {:?}\n", acc2.balance);
+
+    let acc2_balance_without_tx_fee = U256::from_dec_str("1000000000000000000000000")
+        .unwrap()
+        - U256::from_dec_str("1000000000").unwrap();
+    assert!(
+        acc2.balance < acc2_balance_without_tx_fee,
+        "the tx fee of acc2 is not deducted"
+    );
+    println!("tx fee: {:?}\n", acc2_balance_without_tx_fee - acc2.balance);
 }

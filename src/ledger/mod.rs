@@ -236,7 +236,7 @@ impl StateBranch {
 
     // Deal with each transaction.
     // Will be used by all the 3 branches of `Ledger`.
-    pub(crate) fn apply_tx(&mut self, tx: Tx) -> Result<()> {
+    pub fn apply_tx(&mut self, tx: Tx) -> Result<()> {
         let b = self.branch.clone();
         let b = b.as_slice().into();
 
