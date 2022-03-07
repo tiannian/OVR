@@ -37,9 +37,9 @@ impl Tx {
         b: BranchName,
         estimate: bool,
     ) -> StdResult<(ExecRet, Receipt), Option<ExecRet>> {
-        if let Ok((addr, _)) = info!(self.pre_exec(sb, b)) {
+        if let Ok((addr, _, gas_price)) = info!(self.pre_exec(sb, b)) {
             let (from, to) = self.get_from_to();
-            let ret = self.exec(addr, sb, b, estimate);
+            let ret = self.exec(addr, sb, b, gas_price, estimate);
             let r = ret.gen_receipt(from, to);
             alt!(ret.success, Ok((ret, r)), Err(Some(ret)))
         } else {
@@ -56,7 +56,7 @@ impl Tx {
         &self,
         sb: &mut StateBranch,
         b: BranchName,
-    ) -> Result<(H160, OvrAccount)> {
+    ) -> Result<(H160, OvrAccount, U256)> {
         // {0.}
         let gas_price = self.check_gas_price(sb, b).c(d!())?;
 
@@ -74,7 +74,7 @@ impl Tx {
 
         // {3.}{4.}
         match self.check_balance(&addr, gas_price, sb, b) {
-            Ok((account, _)) => Ok((addr, account)),
+            Ok((account, _)) => Ok((addr, account, gas_price)),
             Err(Some((account, needed_amount))) => Err(eg!(
                 "Insufficient balance, needed: {}, total: {}",
                 needed_amount,
@@ -93,6 +93,7 @@ impl Tx {
         addr: H160,
         sb: &mut StateBranch,
         b: BranchName,
+        gas_price: U256,
         estimate: bool,
     ) -> ExecRet {
         let mut evm_cfg = EvmCfg::istanbul();
@@ -205,15 +206,16 @@ impl Tx {
             );
         }
 
-        ExecRet::new(
+        ExecRet {
             success,
             exit_reason,
             gas_used,
+            fee_used: gas_used * gas_price,
             extra_data,
-            addr,
+            caller: addr,
             contract_addr,
             logs,
-        )
+        }
     }
 
     #[inline(always)]
@@ -429,6 +431,7 @@ impl Tx {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ExecRet {
     pub success: bool,
+    pub gas_used: U256,
     pub fee_used: U256,
     pub exit_reason: ExitReason,
     pub extra_data: Vec<u8>,
@@ -438,27 +441,6 @@ pub struct ExecRet {
 }
 
 impl ExecRet {
-    #[inline(always)]
-    fn new(
-        success: bool,
-        exit_reason: ExitReason,
-        fee_used: U256,
-        extra_data: Vec<u8>,
-        caller: H160,
-        contract_addr: H160,
-        logs: Vec<Log>,
-    ) -> Self {
-        Self {
-            success,
-            exit_reason,
-            fee_used,
-            extra_data,
-            caller,
-            contract_addr,
-            logs,
-        }
-    }
-
     fn gen_receipt(&self, from: Option<H160>, to: Option<H160>) -> Receipt {
         let contract_addr = if to.is_none() {
             Some(self.contract_addr)
