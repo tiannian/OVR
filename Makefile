@@ -122,3 +122,6 @@ clean_image:
 ifeq ($(ENV),release)
 	docker rmi $(PUBLIC_ECR_URL)/$(ENV)/ovrd:latest
 endif
+
+clean_binary_image:
+	docker rmi ovrd-binary-image:$(IMAGE_TAG)

@@ -94,6 +94,18 @@ jobs:
         echo "Image tag: ${IMAGE_TAG}"
         make clean_image
 
+    - name: Clean binary images
+      env:
+        GITHUB_CONTEXT: ${{ toJSON(github) }}
+      shell: bash
+      run: |
+        echo "REF: ${GITHUB_REF}"
+        TAGS=$(grep "refs/tags" <<< ${GITHUB_REF}) || true
+        TAGV="${TAGS#refs/tags/}"
+        export IMAGE_TAG="${TAGV:-main}"
+        echo "Image tag: ${IMAGE_TAG}"
+        make clean_binary_image
+
     - name: Clean garbage
       shell: bash
       run: |
