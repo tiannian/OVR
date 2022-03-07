@@ -218,17 +218,21 @@ impl Tx {
 
     #[inline(always)]
     fn check_gas_price(&self, sb: &StateBranch, b: BranchName) -> Result<U256> {
-        let gas_price_min = sb.state.evm.gas_price.get_value_by_branch(b);
-        let gas_price_min = gas_price_min.as_ref().unwrap_or(&GAS_PRICE_MIN);
+        let gas_price_min = sb
+            .state
+            .evm
+            .gas_price
+            .get_value_by_branch(b)
+            .unwrap_or(*GAS_PRICE_MIN);
 
         let gas_price = match &self.tx {
-            TransactionAny::Legacy(tx) => &tx.gas_price,
-            TransactionAny::EIP2930(tx) => &tx.gas_price,
-            TransactionAny::EIP1559(_tx) => &GAS_PRICE_MIN,
+            TransactionAny::Legacy(tx) => tx.gas_price,
+            TransactionAny::EIP2930(tx) => tx.gas_price,
+            TransactionAny::EIP1559(tx) => tx.max_fee_per_gas,
         };
 
         if gas_price_min <= gas_price {
-            Ok(*gas_price)
+            Ok(gas_price)
         } else {
             Err(eg!("Gas price is too low"))
         }

@@ -34,13 +34,6 @@ pub struct State {
     pub vicinity: OvrVicinity,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct CallContractResp {
-    pub evm_resp: ExitReason,
-    pub data: Vec<u8>,
-    pub gas_used: u64,
-}
-
 impl State {
     pub fn call_contract(
         &self,
@@ -133,13 +126,16 @@ impl State {
 }
 
 impl Default for State {
+    // NOTE:
+    // Do NOT use `..Default::default()` style!
+    // Using this style here will make your stack overflow.
     fn default() -> Self {
         Self {
             gas_price: OrphanVs::default(),
             block_gas_limit: OrphanVs::default(),
             block_base_fee_per_gas: OrphanVs::default(),
             OFUEL: Erc20Like::ofuel_token(),
-            block_hashes: MapxOrd::default(),
+            block_hashes: MapxOrd::new(),
             vicinity: OvrVicinity::default(),
         }
     }
@@ -180,4 +176,11 @@ pub struct OvrVicinity {
     pub block_gas_limit: U256,
     // Environmental base fee per gas.
     pub block_base_fee_per_gas: U256,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CallContractResp {
+    pub evm_resp: ExitReason,
+    pub data: Vec<u8>,
+    pub gas_used: u64,
 }

@@ -6,7 +6,7 @@ lint:
 	cargo check --benches
 
 test:
-	cargo test -- --test-threads=1
+	cargo test --release -- --test-threads=1
 
 bench:
 	cargo bench
