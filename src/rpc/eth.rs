@@ -32,6 +32,8 @@ use web3_rpc_core::{
 
 use super::error;
 
+const BASE_GAS: u64 = 21_000;
+
 pub(crate) struct EthApiImpl {
     pub upstream: String,
     pub state: State,
@@ -653,7 +655,7 @@ impl EthApi for EthApiImpl {
         if let Err(e) = resp {
             r = Err(e)
         } else if let Ok(resp) = resp {
-            let gas_used = U256::from(resp.gas_used);
+            let gas_used = U256::from(resp.gas_used + BASE_GAS);
             r = Ok(gas_used)
         } else {
             r = Err(new_jsonrpc_error("call contract resp none", Value::Null));
