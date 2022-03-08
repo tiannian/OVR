@@ -57,7 +57,11 @@ impl App {
     #[inline(always)]
     #[cfg(target_os = "linux")]
     fn btm_snapshot(&self, height: BlockHeight) -> Result<()> {
-        self.cfg.snapshot(height).c(d!())
+        if self.cfg.snap_enable {
+            self.cfg.snapshot(height).c(d!())
+        } else {
+            Ok(())
+        }
     }
 
     #[inline(always)]
