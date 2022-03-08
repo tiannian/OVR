@@ -75,6 +75,7 @@ byte-slice-cast = "1.2.0"
 default = ["vsdb_sled"]
 vsdb_sled = ["vsdb/sled_engine"]
 vsdb_rocksdb = ["vsdb/rocks_engine"]
+ruc_compact = ["ruc/compact"]
 
 [dev-dependencies]
 criterion = { version = "0.3", features = ["html_reports"] }

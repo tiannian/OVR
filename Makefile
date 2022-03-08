@@ -60,12 +60,18 @@ release: build_release
 
 release_rocksdb: build_release_rocksdb
 
+release_online: build_release_rocksdb_online
+
 build_release: tendermint
 	cargo build --release --bins
 	$(call collect,release)
 
 build_release_rocksdb: tendermint
 	cargo build --release --bins --no-default-features --features="vsdb_rocksdb"
+	$(call collect,release)
+
+build_release_rocksdb_online: tendermint
+	cargo build --release --bins --no-default-features --features="vsdb_rocksdb,ruc_compact"
 	$(call collect,release)
 
 build_release_musl: tendermint
