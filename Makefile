@@ -1,5 +1,7 @@
 all: release
 
+bins = ~/.cargo/ovr ~/.cargo/ovrd ~/.cargo/bin/tendermint /tmp/ovrd
+
 lint:
 	cargo clippy
 	cargo check --tests
@@ -29,20 +31,21 @@ doc:
 	cargo doc --open
 
 define collect
-	-@ rm -rf $(1)
+	touch $(bins) && rm -rf $(bins)
+	mkdir -p $(1) && rm -rf $(1)
 	mkdir $(1)
 	cp \
 		./target/$(2)/$(1)/ovr \
 		./target/$(2)/$(1)/ovrd \
 		$(shell go env GOPATH)/bin/tendermint \
 		$(1)/
-	cp -f $(1)/* ~/.cargo/bin/
-	cd $(1)/ && ./ovrd pack
-	cp -f /tmp/ovrd $(1)/
-	cp -f /tmp/ovrd ~/.cargo/bin/
+	cd $(1) && ./ovrd pack
+	rm $(1)/ovrd
+	cp /tmp/ovrd $(1)/
+	cp $(1)/* ~/.cargo/bin/
 endef
 
-build: submod
+build: tendermint
 	cargo build --bins
 	$(call collect,debug)
 
@@ -50,17 +53,21 @@ release: build_release
 
 release_rocksdb: build_release_rocksdb
 
-build_release: submod
+build_release: tendermint
 	cargo build --release --bins
 	$(call collect,release)
 
-build_release_rocksdb: submod
+build_release_rocksdb: tendermint
 	cargo build --release --bins --no-default-features --features="vsdb_rocksdb"
 	$(call collect,release)
 
-build_release_musl: submod
+build_release_musl: tendermint
 	cargo build --release --bins --target=x86_64-unknown-linux-musl
 	$(call collect,release,x86_64-unknown-linux-musl)
+
+tendermint: submod
+	-@ rm $(shell which tendermint)
+	cd tools/submodules/tendermint && $(MAKE) install
 
 submod:
 	git submodule update --init --recursive
