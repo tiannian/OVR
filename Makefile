@@ -42,7 +42,7 @@ define collect
 	cp -f /tmp/ovrd ~/.cargo/bin/
 endef
 
-build: tendermint
+build: submod
 	cargo build --bins
 	$(call collect,debug)
 
@@ -50,22 +50,20 @@ release: build_release
 
 release_rocksdb: build_release_rocksdb
 
-build_release: tendermint
+build_release: submod
 	cargo build --release --bins
 	$(call collect,release)
 
-build_release_rocksdb: tendermint
+build_release_rocksdb: submod
 	cargo build --release --bins --no-default-features --features="vsdb_rocksdb"
 	$(call collect,release)
 
-build_release_musl: tendermint
+build_release_musl: submod
 	cargo build --release --bins --target=x86_64-unknown-linux-musl
 	$(call collect,release,x86_64-unknown-linux-musl)
 
-tendermint:
-	-@ rm $(shell which tendermint)
-	bash tools/download_tendermint.sh 'tools/tendermint'
-	cd tools/tendermint && $(MAKE) install
+submod:
+	git submodule update --init --recursive
 
 prodenv:
 	bash tools/create_prod_env.sh

@@ -27,6 +27,7 @@ for file in $(find .. -path "../target" -a -prune \
     -o -name "rc.local" \
     | grep -v "$(basename $0)" \
     | grep -v '\.git' \
+    | grep -v 'submodules' \
     | grep -v 'target' \
     | grep -v '\.tmp' \
     | grep -v '/debug/' \

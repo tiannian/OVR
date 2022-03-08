@@ -26,19 +26,10 @@ fi
 env_name="prodenv-${RANDOM}${RANDOM}"
 if [[ "" != $1 ]]; then env_name=$1; fi
 env_path="/tmp/__OVR_DEV__/${env_name}"
-c_path="${EXEC_PATH}/contracts.tmp"
-c_results_path="${c_path}/results.tmp"
+c_path="${EXEC_PATH}/submodules/system_contracts"
+c_results_path="/tmp/results.tmp"
 cmd="$(dirname ${EXEC_PATH})/release/ovr dev"
 
-# Download and compile OR-contract.
-if [[ -d $c_path ]]; then
-    cd $c_path || exit 1
-    # git clean -fdx || exit 1
-    git pull || exit 1
-    cd $EXEC_PATH || exit 1
-else
-    git clone https://github.com/ovr-defi/system-contracts.git $c_path || exit 1
-fi
 cd $c_path || exit 1
 npm install \
     || (echo -e "\033[31;1mNeed to install 'node'?\033[0m" && exit 1)
