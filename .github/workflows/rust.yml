@@ -17,4 +17,4 @@ jobs:
     - name: Build
       run: rustup update stable; make build
     - name: Run tests
-      run: rustup update stable; make test
+      run: rustup update stable; make testall

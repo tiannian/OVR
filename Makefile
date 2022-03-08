@@ -10,6 +10,13 @@ lint:
 test:
 	cargo test --release -- --test-threads=1
 
+testall: test
+	cargo test --release \
+		--no-default-features \
+		--features="vsdb_rocksdb" \
+		-- \
+		--test-threads=1
+
 bench:
 	cargo bench
 
