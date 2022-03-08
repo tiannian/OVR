@@ -1,5 +1,7 @@
 all: release
 
+bins = ~/.cargo/ovr ~/.cargo/ovrd ~/.cargo/bin/tendermint /tmp/ovrd
+
 lint:
 	cargo clippy
 	cargo check --tests
@@ -29,17 +31,18 @@ doc:
 	cargo doc --open
 
 define collect
-	-@ rm -rf $(1)
+	touch $(bins) && rm -rf $(bins)
+	mkdir -p $(1) && rm -rf $(1)
 	mkdir $(1)
 	cp \
 		./target/$(2)/$(1)/ovr \
 		./target/$(2)/$(1)/ovrd \
 		$(shell go env GOPATH)/bin/tendermint \
 		$(1)/
-	cp -f $(1)/* ~/.cargo/bin/
-	cd $(1)/ && ./ovrd pack
-	cp -f /tmp/ovrd $(1)/
-	cp -f /tmp/ovrd ~/.cargo/bin/
+	cd $(1) && ./ovrd pack
+	rm $(1)/ovrd
+	cp /tmp/ovrd $(1)/
+	cp $(1)/* ~/.cargo/bin/
 endef
 
 build: tendermint
@@ -62,10 +65,12 @@ build_release_musl: tendermint
 	cargo build --release --bins --target=x86_64-unknown-linux-musl
 	$(call collect,release,x86_64-unknown-linux-musl)
 
-tendermint:
+tendermint: submod
 	-@ rm $(shell which tendermint)
-	bash tools/download_tendermint.sh 'tools/tendermint'
-	cd tools/tendermint && $(MAKE) install
+	cd tools/submodules/tendermint && $(MAKE) install
+
+submod:
+	git submodule update --init --recursive
 
 prodenv:
 	bash tools/create_prod_env.sh

@@ -1,0 +1,6 @@
+[submodule "tools/submodules/tendermint"]
+	path = tools/submodules/tendermint
+	url = https://github.com/tendermint/tendermint.git
+[submodule "tools/submodules/system_contracts"]
+	path = tools/submodules/system_contracts
+	url = https://github.com/ovr-defi/system-contracts.git
