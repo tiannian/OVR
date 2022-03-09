@@ -119,6 +119,10 @@ impl Ledger {
         let mut deliver_tx = self.deliver_tx.write();
         let mut check_tx = self.check_tx.write();
 
+        if is_loading {
+            main.clean_up().c(d!())?;
+        }
+
         // Lock all branches before this operation.
         main.state.refresh_branches().c(d!())?;
 
@@ -169,12 +173,16 @@ impl Ledger {
     #[inline(always)]
     pub fn load_from_snapshot() -> Result<Option<Self>> {
         match StateBranch::load_from_snapshot().c(d!()) {
-            Ok(Some(sb)) => {
+            Ok(Some(main)) => {
+                let mut deliver_tx = main.clone();
+                deliver_tx.branch = DELIVER_TX_BRANCH_NAME.0.to_owned();
+                let mut check_tx = main.clone();
+                check_tx.branch = CHECK_TX_BRANCH_NAME.0.to_owned();
                 let ledger = Ledger {
-                    state: sb.state.clone(),
-                    main: Arc::new(RwLock::new(sb.clone())),
-                    deliver_tx: Arc::new(RwLock::new(sb.clone())),
-                    check_tx: Arc::new(RwLock::new(sb)),
+                    state: main.state.clone(),
+                    main: Arc::new(RwLock::new(main)),
+                    deliver_tx: Arc::new(RwLock::new(deliver_tx)),
+                    check_tx: Arc::new(RwLock::new(check_tx)),
                 };
                 ledger.loading_refresh().c(d!())?;
                 Ok(Some(ledger))
@@ -229,6 +237,20 @@ impl StateBranch {
 
         if b == MAIN_BRANCH_NAME {
             self.update_evm_aux(b);
+        }
+
+        Ok(())
+    }
+
+    fn clean_up(&self) -> Result<()> {
+        let ver = VsVersion::new(1 + self.last_block_height(), 0).encode_value();
+        let ver = ver.as_ref().into();
+
+        let br = self.branch.clone();
+        let br = br.as_slice().into();
+
+        if self.state.version_exists_on_branch(ver, br) {
+            self.state.version_pop_by_branch(br).c(d!())?;
         }
 
         Ok(())
@@ -401,10 +423,10 @@ impl StateBranch {
         self.state.blocks.last().map(|(_, b)| b)
     }
 
-    // #[inline(always)]
-    // pub fn last_block_height(&self) -> BlockHeight {
-    //     self.state.blocks.last().map(|(h, _)| h).unwrap_or(0)
-    // }
+    #[inline(always)]
+    fn last_block_height(&self) -> BlockHeight {
+        self.state.blocks.last().map(|(h, _)| h).unwrap_or(0)
+    }
 
     #[inline(always)]
     pub fn last_block_hash(&self) -> HashValue {
@@ -451,7 +473,9 @@ impl State {
 
         // The `DELIVER_TX` branch should has been deleted in the process of `commit`,
         // the trial deleting operation here is used to deal with some special scenes.
-        omit!(self.branch_remove(DELIVER_TX_BRANCH_NAME).c(d!()));
+        if self.branch_exists(DELIVER_TX_BRANCH_NAME) {
+            self.branch_remove(DELIVER_TX_BRANCH_NAME).c(d!())?;
+        }
 
         self.branch_create_by_base_branch(
             DELIVER_TX_BRANCH_NAME,
