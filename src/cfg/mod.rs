@@ -21,7 +21,7 @@ pub enum Commands {
     Cli(CliCfg),
     #[clap(about = "Run ovr in daemon mode, aka run a node")]
     Daemon(Box<DaemonCfg>),
-    #[clap(about = "Development utils, create a local env, .etc")]
+    #[clap(about = "Development utils, creating a local env, etc.")]
     Dev(DevCfg),
     #[cfg(target_os = "linux")]
     #[clap(about = "BTM related operations")]

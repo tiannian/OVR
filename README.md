@@ -42,7 +42,7 @@ OPTIONS:
 SUBCOMMANDS:
     cli       Run ovr in client mode
     daemon    Run ovr in daemon mode, aka run a node
-    dev       Development utils, create a local env, .etc
+    dev       Development utils, creating a local env, etc.
     help      Print this message or the help of the given subcommand(s)
 ```
 
