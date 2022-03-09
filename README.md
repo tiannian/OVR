@@ -1,12 +1,12 @@
-![GitHub top language](https://img.shields.io/github/languages/top/ovr-defi/OVR)
-![GitHub issues](https://img.shields.io/github/issues-raw/ovr-defi/OVR)
-![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/ovr-defi/OVR)
-![GitHub Workflow Status](https://img.shields.io/github/workflow/status/ovr-defi/OVR/Rust)
+![GitHub top language](https://img.shields.io/github/languages/top/Overealityio/OVR)
+![GitHub issues](https://img.shields.io/github/issues-raw/Overealityio/OVR)
+![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/Overealityio/OVR)
+![GitHub Workflow Status](https://img.shields.io/github/workflow/status/Overealityio/OVR/Rust)
 ![Minimum rustc version](https://img.shields.io/badge/rustc-1.59+-lightgray.svg)
 
 # OVR
 
-Overeality project.
+[**Overeality project**](https://github.com/Overealityio/Overeality/blob/main/README.md).
 
 ## Usage
 
